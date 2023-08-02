@@ -54,7 +54,5 @@ class PrimerGenerator:
         primers=primer3.bindings.design_primers(seq_args, global_args_to_use)
         return primers
     
-    def parse_generator_output(self):
-
-
+    #def parse_generator_output(self):
 

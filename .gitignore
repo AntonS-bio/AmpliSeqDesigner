@@ -1,3 +1,6 @@
+# large test data
+test_data/vcfs/*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
