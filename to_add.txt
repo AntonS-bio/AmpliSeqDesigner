@@ -1,0 +1,2 @@
+### Add check to VCF load to confirm all mapped to same reference
+### Add check that target Fasta contigs are the same as VCF reference
