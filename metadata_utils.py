@@ -31,27 +31,11 @@ def samples_in_metadata(samples: List[str]) -> bool:
     global meta_data
     samples_without_metadata:List[str]=[]
     for sample in samples:
-        if sample in meta_data.index:
-            name_converters.add_value(sample,sample)
-        else:
-            possible_sample_name=sample_from_full_name(sample)
-            if possible_sample_name in meta_data.index:
-                name_converters.add_value(sample,possible_sample_name)
-            else: #unable to determine the sample name, so classify it as missing
-                samples_without_metadata.append(sample)
-
+        if not name_converters.add_value(sample, set(meta_data.index)):
+            samples_without_metadata.append(sample)
     if len(samples_without_metadata)==0:
         return True
     else:
         missing_to_print="\n"+"\n".join( samples_without_metadata[ 0: min(5,len(samples_without_metadata)) ] )
         print(f'{len(samples_without_metadata)} samples are missing in metadata. Few examples are: {missing_to_print}')
         return False
-
-    
-def sample_from_full_name(filename: str) -> str:
-    global meta_data
-    #### Often, the file id is whatever preceeds file extension.
-    #### This gets the id from full file address
-    directory, filename=split(filename)
-    sample=".".join(filename.split(".")[0:-1])
-    return sample

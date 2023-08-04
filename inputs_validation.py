@@ -3,21 +3,24 @@
 
 from os.path import exists
 import warnings
+from tqdm import tqdm
 
 class ValidateFiles:
 
     def validate_many(self, file_list, files_type) -> None:
         if len(file_list)==0:
             raise ValueError(f'Cannot validate an empty list')
-        for file in file_list:
-            if files_type=="fasta":
-                self.validate_fasta(file)
-            elif files_type=="vcf":
-                self.validate_vcf(file)
-            elif files_type=="bed":
-                self.validate_bed(file)
-            else:
-                raise ValueError(f'Unknown files type: {files_type}')
+        with tqdm(total=len(file_list)) as progress_meter:
+            for file in file_list:
+                if files_type=="fasta":
+                    self.validate_fasta(file)
+                elif files_type=="vcf":
+                    self.validate_vcf(file)
+                elif files_type=="bed":
+                    self.validate_bed(file)
+                else:
+                    raise ValueError(f'Unknown files type: {files_type}')
+                progress_meter.update(1)
         return None
 
     def validate_bed(self, bed_file_name: str) -> None:
@@ -106,17 +109,19 @@ class ValidateFiles:
     def validate_vcf(self, vcf_file_name: str) -> None:
         if not exists(vcf_file_name):
             raise FileExistsError(f'File or directory {vcf_file_name} does not exist')
-        with open(vcf_file_name) as vcf_file:
-            first_two_char=vcf_file.readline()[0:2]
-            if first_two_char!="##":
-                raise ValueError(f'First line of VCF file {vcf_file_name} does not start with ##')
-            for line in vcf_file:
-                if len(line)>=6:
-                    if line[0:2]=="##":
-                        pass #waiting to find line with #CHROM in it
-                    if line[0:6]=="#CHROM" and len(line.split("\t"))<=9:
-                        raise ValueError(f'The header VCF line (#CHROM...) should have 9 or more lines, but has fewer in file {vcf_file_name}')
-                        break
+        vcf_file= open(vcf_file_name)
+        first_two_char=vcf_file.readline()[0:2]
+        if first_two_char!="##":
+            vcf_file.close()
+            raise ValueError(f'First line of VCF file {vcf_file_name} does not start with ##')
+        for line in vcf_file:
+            if len(line)>=6:
+                if line[0:2]=="##":
+                    pass #waiting to find line with #CHROM in it
+                if line[0:6]=="#CHROM" and len(line.split("\t"))<=9:
+                    vcf_file.close()
+                    raise ValueError(f'The header VCF line (#CHROM...) should have 9 or more lines, but has fewer in file {vcf_file_name}')
+                    break
         return None
 
     def validate_hierarchy(self, hierarchy_file_name: str) -> None:

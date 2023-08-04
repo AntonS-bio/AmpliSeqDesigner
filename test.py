@@ -1,8 +1,9 @@
 from inputs_validation import ValidateFiles
 from fasta_utils import FastaUtilities
-from generate_primers import PrimerGenerator
+#from generate_primers import PrimerGenerator
 import name_converters
 import time 
+from multiprocessing import cpu_count, pool
 
 #### START Input validation tests ####
 # file_validator=ValidateFiles()
@@ -27,33 +28,55 @@ import numpy as np
 from collections import Counter
 from typing import Dict, List
 import sys
+from tqdm import tqdm
+import time
 
+name_converters.name_stubs.add("_NC_012731_q30")
 
-vcf_dir: str="/home/ubuntu/HandyAmpliconTool/test_data/vcfs/"
-vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir)]
-repeat_regions_file: str="/home/ubuntu/HandyAmpliconTool/test_data/ref_repeats.bed"
+vcf_dir: str="/home/ubuntu/Marit/NK_VCF/"
+vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) if f.find("_q30.vcf")>0][0:50]
+repeat_regions_file: str=""
 file_validator=ValidateFiles()
-file_validator.validate_many(vcf_files, "vcf")
-file_validator.validate_bed(repeat_regions_file)
-file_validator.contigs_in_vcf(repeat_regions_file,vcf_files[0])
-meta_data_file="/home/ubuntu/HandyAmpliconTool/test_data/TGC_data.csv"
-metadata_utils.load_metadata(meta_data_file,",")
+#file_validator.validate_many(vcf_files, "vcf")
+if repeat_regions_file!="":
+    file_validator.validate_bed(repeat_regions_file)
+    file_validator.contigs_in_vcf(repeat_regions_file,vcf_files[0])
+meta_data_file="/home/ubuntu/Marit/kleborate_v236_kaptive_v206_KG_illumina_2023-03-09.txt"
+metadata_utils.load_metadata(meta_data_file,"\t")
 metadata_utils.samples_in_metadata(vcf_files)
-metadata_utils.genotype_column="Final_genotype" #this will be an input
+metadata_utils.genotype_column="species" #this will be an input
 
 vcf_utils=VCFutilities()
 master_vcf=pd.DataFrame()
-for vcf in vcf_files:
-    vcf_to_add=vcf_utils.load_file(vcf, )
-    if master_vcf.shape[1]==0:
-        master_vcf=vcf_to_add.copy()
-    else:
-        master_vcf=master_vcf.join(vcf_to_add, how="outer")
+
+start_time=time.time()
+vcfs: List[pd.DataFrame]=[]
+with tqdm(total=len(vcf_files)) as progress_meter:
+    for i, vcf in enumerate(vcf_files):
+        vcf_to_add=vcf_utils.load_file(vcf )
+        if master_vcf.shape[1]==0:
+            master_vcf=vcf_to_add.copy()
+        else:
+            vcfs.append(vcf_to_add)
+        progress_meter.update(1)
+
+##get total indices from all vcfs to preallocate dataframe, this is much faster than merge and the loading of the vcfs can be parallelised
+vcf_columns=[""]*len(vcfs)
+indices=[]
+for i, vcf_data in enumerate(vcfs):
+    indices=indices+list(vcf_data.index)
+    vcf_columns[i]=vcf_data.columns[-1]
+master_vcf=pd.DataFrame(index=list(set(indices)), columns=vcf_columns)
+master_vcf.sort_index(inplace=True)
+for i, vcf_data in enumerate(vcfs):
+    master_vcf.loc[vcf_data.index, vcf_data.columns[-1]]=vcf_data[vcf_data.columns[-1]]
+print(time.time()-start_time)
 master_vcf.fillna("REF", inplace=True)
 
-vcf_utils.remove_repeat_regions(master_vcf,repeat_regions_file)
+if repeat_regions_file!="":
+    vcf_utils.remove_repeat_regions(master_vcf,repeat_regions_file)
 
-hierarchy_file="/home/ubuntu/HandyAmpliconTool/test_data/genotype_hierarcy.tsv"
+hierarchy_file="/home/ubuntu/Marit/hierarchy.txt"
 file_validator.validate_hierarchy(hierarchy_file)
 hierarchy_utils=HierarchyUtilities()
 hierarchy_utils.load_hierarchy(hierarchy_file)
@@ -72,7 +95,7 @@ for genotype in target_snps.keys():
 with open("/home/ubuntu/HandyAmpliconTool/test_data/test_gt_snps.tsv", "w") as output_file:
     output_file.write("CHR\tPOS\t"+"\t".join(gt_snp_df.columns)+"\n")
     for index in gt_snp_df.index:
-        output_file.write("\t".join(list(index)+[str(f) for f in gt_snp_df.loc[[index],gt_snp_df.columns] ])+"\n")
+        output_file.write("\t".join([str(f) for f in list(index)]+[str(f) for f in gt_snp_df.loc[[index],gt_snp_df.columns] ])+"\n")
 #### END Identification of genotype defining SNPS #### 
 
 
