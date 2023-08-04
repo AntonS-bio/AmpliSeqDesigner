@@ -1,10 +1,12 @@
 import pandas as pd
 from collections import Counter
 import warnings
-from typing import Dict
+from typing import Dict, List, Tuple
 import name_converters
+from numpy import intersect1d
 
 ## Consider replacing some of this with GATKs VariantsToTable
+
 
 class VCFutilities():
     def __init__(self) -> None:
@@ -65,6 +67,13 @@ class VCFutilities():
         data.loc[~no_calls_mask,sample_column]=data.loc[~no_calls_mask,"ALT"] #this only works for single sample VCF of haploids
         ##### !!!!! This needs further work. 
 
+    def remove_repeat_regions(self, vcf_data, bed_file) -> None:
+        regions_to_exclude: List[ Tuple[str,int] ]=[]
+        with open(bed_file) as bed_data:
+            for line in bed_data:
+                values=line.strip().split("\t")
+                regions_to_exclude=regions_to_exclude+[(values[0],f) for f in range(int(values[1]), int(values[2]))]
+        vcf_data.drop( [f for f in regions_to_exclude if f in vcf_data.index] , axis="index", inplace=True )
     
     def _has_duplicate_positions(self, data: pd.DataFrame, filename: str) -> bool:
         if Counter(data.index.duplicated())[True]!=0:

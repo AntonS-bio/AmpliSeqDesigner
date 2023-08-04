@@ -20,7 +20,7 @@ class ValidateFiles:
                 raise ValueError(f'Unknown files type: {files_type}')
         return None
 
-    def validate_bed(self, bed_file_name) -> None:
+    def validate_bed(self, bed_file_name: str) -> None:
         if not exists(bed_file_name):
             raise FileExistsError(f'File or directory {bed_file_name} does not exist')
         
@@ -28,7 +28,7 @@ class ValidateFiles:
             for line_counter, line in enumerate(bed_file):
                 if line.find("\t")==-1:
                     raise ValueError(f'No tab-delimited found in file {bed_file_name} on line {line_counter}:\n {line}')
-                line_values=line.split("\t")
+                line_values=line.strip().split("\t")
                 if len(line_values)<3:
                     raise ValueError(f'Min numpber of tab-delimited columns in 3, but only {len(line_values)} were found on line {line_counter}:\n {line} ')
                 if not line_values[1].isdigit() or not line_values[2].isdigit():
@@ -39,7 +39,7 @@ class ValidateFiles:
                 raise ValueError(f'{bed_file_name} is empty')
         return None
 
-    def validate_fasta(self, fasta_file_name) -> None:
+    def validate_fasta(self, fasta_file_name: str) -> None:
         if not exists(fasta_file_name):
             raise FileExistsError(f'File or directory {fasta_file_name} does not exist')
         with open(fasta_file_name) as fasta_file:
@@ -50,7 +50,7 @@ class ValidateFiles:
                 raise ValueError(f'Fasta file must have ">" on first line in {fasta_file_name}\n {first_fifty_char}')
         return None
     
-    def check_fasta_for_dashes(self, fasta_file_name) -> None:
+    def check_fasta_for_dashes(self, fasta_file_name: str) -> None:
         with open(fasta_file_name) as fasta_file:
             for line in fasta_file:
                 if line[0]!=">":
@@ -58,7 +58,7 @@ class ValidateFiles:
                         warnings.warn(f'Fasta file {fasta_file_name} has "-". This is likely to cause problems')
         return None
     
-    def check_contigs_in_fasta(self, bed_file_name, fasta_file_name) -> None:
+    def contigs_in_fasta(self, bed_file_name: str, fasta_file_name: str) -> bool:
         ### Assume that bed and fasta files have already been validated
         bed_contigs=set()
         with open(bed_file_name) as bed_file:
@@ -78,7 +78,32 @@ class ValidateFiles:
                 raise ValueError(f'Some bed file {bed_file_name} contig IDs not found in fasta file {fasta_file_name} (first 10):\n {missing_contigs} ')
         return None
             
-    def validate_vcf(self, vcf_file_name) -> None:
+    def contigs_in_vcf(self, bed_file_name: str, vcf_file_name: str) -> bool:
+        ### Assume that bed and fasta files have already been validated
+        bed_contigs=set()
+        with open(bed_file_name) as bed_file:
+            for line in (bed_file):
+                bed_contigs.add(line.split("\t")[0])
+        if len(bed_contigs)==0:
+            warnings.warn(f'Bed file {bed_file_name} is empty')
+            return True
+        
+        vcf_contigs=set()
+        with open(vcf_file_name) as vcf_file:
+            for line in vcf_file:
+                if line[0]!="#":
+                    contig_id=line.split("\t")[0]
+                    vcf_contigs.add(contig_id)
+                    if contig_id in bed_contigs:
+                        return True
+        if len(vcf_contigs)==0:
+            warnings.warn(f'VCF file {vcf_file_name} had no variants (i.e. no lines that do not start with #)')
+            return True
+        else:
+            warnings.warn("\n"+f'None of the contigs in VCF file {vcf_file_name} are present in bedfile {bed_file_name}')
+            return False
+
+    def validate_vcf(self, vcf_file_name: str) -> None:
         if not exists(vcf_file_name):
             raise FileExistsError(f'File or directory {vcf_file_name} does not exist')
         with open(vcf_file_name) as vcf_file:
@@ -94,7 +119,7 @@ class ValidateFiles:
                         break
         return None
 
-    def validate_hierarchy(self, hierarchy_file_name) -> None:
+    def validate_hierarchy(self, hierarchy_file_name: str) -> None:
         if not exists(hierarchy_file_name):
             raise FileExistsError(f'File or directory {hierarchy_file_name} does not exist')
         with open(hierarchy_file_name) as input_file:
