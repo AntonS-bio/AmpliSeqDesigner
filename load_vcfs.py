@@ -4,14 +4,14 @@ import warnings
 from typing import Dict, List, Tuple
 import name_converters
 from numpy import intersect1d
-
+import metadata_utils
 ## Consider replacing some of this with GATKs VariantsToTable
 
-
+   
 class VCFutilities():
+
     def __init__(self) -> None:
         pass
-        
 
     def load_file(self, filename: str) -> pd.DataFrame:
         #### read the VCF file until #CHROM is reached
@@ -41,8 +41,7 @@ class VCFutilities():
             #drop invariant sites, non-haploid and delecitons are not supported.
             self._drop_invariant_sites(vcf_data, filename)
             vcf_data.drop(vcf_data.columns[0:-1], axis=1, inplace=True)
-            name_converters.add_address(filename)
-            name_converters.add_value(vcf_data.columns[-1],  name_converters.get_sample(filename))
+            name_converters.add_value(vcf_data.columns[-1],metadata_utils.meta_data.index)
         else:
             raise ValueError(f'The vcf type {vcf_file_type} is not currently supported')
         return vcf_data
@@ -84,8 +83,7 @@ class VCFutilities():
             return True
         else:
             return False
-    
-    def merge_vcfs(self, master_vcf: pd.DataFrame, vcf_to_add: pd.DataFrame) -> None:
-        master_vcf.join(vcf_to_add, how="outer")
 
-
+    master_vcf_temp: pd.DataFrame = pd.DataFrame()
+    def merge_vcfs(self, additional_vcf: pd.DataFrame) -> None:
+        self.master_vcf_temp.loc[additional_vcf.index, additional_vcf.columns[-1]]=additional_vcf[additional_vcf.columns[-1]]
