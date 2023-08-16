@@ -77,7 +77,10 @@ class VCFutilities():
     def _has_duplicate_positions(self, data: pd.DataFrame, filename: str) -> bool:
         if Counter(data.index.duplicated())[True]!=0:
             duplicate_indices=data.index[data.index.duplicated()]
-            values_to_print="\n"+"\n".join(duplicate_indices[0:min(5, len(duplicate_indices))])
+            warnings.warn(f'VCF file {filename} has {len(duplicate_indices)} duplicated positions')
+            values_to_print=""
+            for index in duplicate_indices[0:min(5, len(duplicate_indices))]:
+                values_to_print=f'{values_to_print}\n{index}' #the index is tuple (chr, pos), for clarity generating string to print is done in loop
             warnings.warn(f'VCF file {filename} has {len(duplicate_indices)} duplicated positions. These will be dropped as tools is meant for bacteria. Few examples are: {values_to_print}')
             data.drop(duplicate_indices, axis="index", inplace=True)
             return True

@@ -27,15 +27,13 @@ def get_metavalue(sample: str, value_column: str) -> str:
     else:
         raise ValueError(f'Sample {sample} appears missing in metadata file')
 
-def samples_in_metadata(samples: List[str]) -> bool:
+def samples_in_metadata(samples: List[str]) -> List[str]:
     global meta_data
     samples_without_metadata:List[str]=[]
     for sample in samples:
         if not name_converters.add_value(sample, set(meta_data.index)):
             samples_without_metadata.append(sample)
-    if len(samples_without_metadata)==0:
-        return True
-    else:
+    if len(samples_without_metadata)!=0:
         missing_to_print="\n"+"\n".join( samples_without_metadata[ 0: min(5,len(samples_without_metadata)) ] )
-        print(f'{len(samples_without_metadata)} samples are missing in metadata. Few examples are: {missing_to_print}')
-        return False
+        print(f'{len(samples_without_metadata)} samples are missing in metadata. Few examples are: {missing_to_print}\nThese samples will be excluded.')
+    return samples_without_metadata

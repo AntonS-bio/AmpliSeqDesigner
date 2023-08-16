@@ -3,7 +3,25 @@ from fasta_utils import FastaUtilities
 #from generate_primers import PrimerGenerator
 import name_converters
 import time 
+import sys
 from multiprocessing import cpu_count, pool
+from os import listdir
+
+vcf_dir="/home/ubuntu/converted_vcfs"
+vcf_files=[f'{vcf_dir}/{f}' for f in listdir(vcf_dir) ]
+print(len(vcf_files))
+valid=0
+for file in vcf_files:
+    try:
+        with open(file) as temp_file:
+            if temp_file.readline()[0]=="#":
+                valid+=1
+    except:
+        pass
+print(f'Valid: {valid}')
+print(f'Invalid: {len(vcf_files)-valid}')
+
+sys.exit()
 
 #### START Input validation tests ####
 # file_validator=ValidateFiles()

@@ -15,14 +15,16 @@ from tqdm import tqdm
 
 ##### !!Testing inputs
 name_converters.name_stubs.add(".sorted")
-vcf_dir: str="/home/ubuntu/HandyAmpliconTool/test_data/vcfs/"
+#vcf_dir: str="/home/ubuntu/HandyAmpliconTool/test_data/vcfs/"
+vcf_dir: str="/home/ubuntu/converted_vcfs/"
 meta_data_file="/home/ubuntu/HandyAmpliconTool/test_data/TGC_data.csv"
 meta_deliminter=","
 genotype_column="Final_genotype"
 hierarchy_file="/home/ubuntu/HandyAmpliconTool/test_data/genotype_hierarcy.tsv"
 ##### !!Testing inputs
 
-vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ]
+vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:500]
+#vcf_files=["/home/ubuntu/converted_vcfs/32708_1#84.vcf"]
 repeat_regions_file: str=""
 file_validator=ValidateFiles()
 #file_validator.validate_many(vcf_files, "vcf")
@@ -30,7 +32,9 @@ if repeat_regions_file!="":
     file_validator.validate_bed(repeat_regions_file)
     file_validator.contigs_in_vcf(repeat_regions_file,vcf_files[0])
 metadata_utils.load_metadata(meta_data_file,meta_deliminter)
-metadata_utils.samples_in_metadata(vcf_files)
+samples_without_metadata=metadata_utils.samples_in_metadata(vcf_files)
+for sample in samples_without_metadata:
+    vcf_files.remove(sample)
 metadata_utils.genotype_column=genotype_column #this will be an input
 
 vcf_utils=VCFutilities()
@@ -40,21 +44,18 @@ start_time=time.time()
 vcfs: List[pd.DataFrame]=[]
 with tqdm(total=len(vcf_files)) as progress_meter:
     for i, vcf in enumerate(vcf_files):
-        vcf_to_add=vcf_utils.load_file(vcf )
-        if master_vcf.shape[1]==0:
-            master_vcf=vcf_to_add.copy()
-        else:
-            vcfs.append(vcf_to_add)
+        vcfs.append( vcf_utils.load_file(vcf ) )
         progress_meter.update(1)
 
 ##get total indices from all vcfs to preallocate dataframe, this is much faster than merge and the loading of the vcfs can be parallelised
 vcf_columns=[""]*len(vcfs)
-indices=[]
-for i, vcf_data in enumerate(vcfs):
-    indices=indices+list(vcf_data.index)
-    vcf_columns[i]=vcf_data.columns[-1]
-master_vcf=pd.DataFrame(index=list(set(indices)), columns=vcf_columns)
-master_vcf.sort_index(inplace=True)
+with tqdm(total=len(vcfs)) as progress_meter:
+    for i, vcf_data in enumerate(vcfs):
+        vcf_columns[i]=vcf_data.columns[-1]
+        progress_meter.update(1)
+all_vcf_indices=sorted(set([k for f in vcfs for k in f.index]))
+master_vcf=pd.DataFrame(index=all_vcf_indices, columns=vcf_columns)
+#master_vcf.sort_index(inplace=True)
 
 if __name__ == '__main__':
     # Multiprocessing doesn't speed up this step in short (few positions) datasets. Try later on longer dataset.
@@ -64,10 +65,13 @@ if __name__ == '__main__':
     # pool.close()
     # pool.join()
     
-    for i, vcf_data in enumerate(vcfs):
-        master_vcf.loc[vcf_data.index, vcf_data.columns[-1]]=vcf_data[vcf_data.columns[-1]]
-    print(time.time()-start_time)
-    
+    with tqdm(total=len(vcfs)) as progress_meter:
+        for vcf_data in vcfs:
+            master_vcf.loc[vcf_data.index, vcf_data.columns[-1]]=vcf_data[vcf_data.columns[-1]]
+            progress_meter.update(1)
+
+    del vcf
+
     master_vcf.fillna("REF", inplace=True)
     #sys.exit()
 
@@ -96,3 +100,4 @@ if __name__ == '__main__':
     for genotype in genotype_bifurcating_snps.keys():
         gt_snp_df.loc[genotype_bifurcating_snps[genotype],genotype]=1
     #### END Identification of genotype defining SNPS #### 
+    gt_snp_df.to_csv("/home/ubuntu/HandyAmpliconTool/test_data/test_gt_snps.tsv")

@@ -1,2 +1,4 @@
 ### Add check to VCF load to confirm all mapped to same reference
 ### Add check that target Fasta contigs are the same as VCF reference
+### Allow to have genotypes inferred from the metadata column. I.e. instead of specifying ST11, ST15, etc, just take each ST to be a distinct genotype
+### Check that VCFs were mapped to the same reference.
