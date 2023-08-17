@@ -1,5 +1,7 @@
 # large test data
 test_data/vcfs/*
+test_genomes/*
+test_data/msa/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

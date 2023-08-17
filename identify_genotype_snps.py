@@ -21,11 +21,11 @@ meta_data_file="/home/ubuntu/HandyAmpliconTool/test_data/TGC_data.csv"
 meta_deliminter=","
 genotype_column="Final_genotype"
 hierarchy_file="/home/ubuntu/HandyAmpliconTool/test_data/genotype_hierarcy.tsv"
+repeat_regions_file: str="/home/ubuntu/HandyAmpliconTool/test_data/ref_repeats.bed"
 ##### !!Testing inputs
 
-vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:500]
+vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:3000]
 #vcf_files=["/home/ubuntu/converted_vcfs/32708_1#84.vcf"]
-repeat_regions_file: str=""
 file_validator=ValidateFiles()
 #file_validator.validate_many(vcf_files, "vcf")
 if repeat_regions_file!="":
@@ -36,6 +36,10 @@ samples_without_metadata=metadata_utils.samples_in_metadata(vcf_files)
 for sample in samples_without_metadata:
     vcf_files.remove(sample)
 metadata_utils.genotype_column=genotype_column #this will be an input
+
+file_validator.validate_hierarchy(hierarchy_file)
+hierarchy_utils=HierarchyUtilities()
+hierarchy_utils.load_hierarchy(hierarchy_file)
 
 vcf_utils=VCFutilities()
 master_vcf=pd.DataFrame()
@@ -78,10 +82,6 @@ if __name__ == '__main__':
     if repeat_regions_file!="":
         vcf_utils.remove_repeat_regions(master_vcf,repeat_regions_file)
 
-    file_validator.validate_hierarchy(hierarchy_file)
-    hierarchy_utils=HierarchyUtilities()
-    hierarchy_utils.load_hierarchy(hierarchy_file)
-
     # pool = Pool(processes=max(cpu_count()-1,1))
     # pool.map( vcf_utils.merge_vcfs, vcfs)
     # pool.close()
@@ -95,9 +95,13 @@ if __name__ == '__main__':
     #master_vcf=master_vcf.astype(pd.SparseDtype("str", "REF"))
     #print(Counter([meta_data.get_metavalue(f,"Final_genotype") for f in samples]))
 
-    unique_bifurcating_snps=list(set([a for f in genotype_bifurcating_snps.values() for a in f]))
-    gt_snp_df: pd.DataFrame=pd.DataFrame(index=unique_bifurcating_snps, columns=genotype_bifurcating_snps.keys()).fillna(0)
-    for genotype in genotype_bifurcating_snps.keys():
-        gt_snp_df.loc[genotype_bifurcating_snps[genotype],genotype]=1
+    gt_snp_df=pd.DataFrame(index=master_vcf.index, columns=list(genotype_bifurcating_snps.keys())).fillna(False)
+    for gt in genotype_bifurcating_snps:
+        gt_snp_df.loc[ genotype_bifurcating_snps[gt].index,  gt ]=genotype_bifurcating_snps[gt]["Pass"]
+
+    #snp_to_drop=[index for index in gt_snp_df.index if True not in gt_snp_df.loc[ index ].values]
+
+    #gt_snp_df.drop(index=snp_to_drop, inplace=True)
+
     #### END Identification of genotype defining SNPS #### 
-    gt_snp_df.to_csv("/home/ubuntu/HandyAmpliconTool/test_data/test_gt_snps.tsv")
+    gt_snp_df.to_csv("/home/ubuntu/HandyAmpliconTool/test_data/test_gt_snps.tsv", sep="\t")

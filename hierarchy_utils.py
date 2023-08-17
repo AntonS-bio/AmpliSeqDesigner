@@ -6,13 +6,14 @@ import name_converters as nc
 from collections import Counter
 from multiprocessing import cpu_count, Pool
 import numpy as np
+import warnings
 
 class HierarchyUtilities:
 
     def __init__(self) -> None:
         self.genotype_hierarchy: Dict[str,List[str]]={}
-        self.sensitivity_limit=0.98
-        self.specificity_limit=0.98
+        self.sensitivity_limit=0.99
+        self.specificity_limit=0.99
 
 
     def load_hierarchy(self, filename) -> None:
@@ -40,93 +41,47 @@ class HierarchyUtilities:
     _snp_data: pd.DataFrame=pd.DataFrame()
     _column_to_gt: List[str]
     _genotype_snps: pd.DataFrame
-    # def _find_defining_snps(self, unique_gt: str ) -> Tuple:
-    #     print(unique_gt)
-    #     gt_and_subgts=self.genotype_hierarchy[unique_gt]
-    #     target_columns=[self._snp_data.columns[i] for i, f in enumerate(self._column_to_gt) if f in gt_and_subgts]
-    #     non_target_columns=[self._snp_data.columns[i] for i, f in enumerate(self._column_to_gt) if f not in gt_and_subgts]
-    #     unique_target=self._snp_data[target_columns].apply(lambda x: list(Counter(x).keys()), axis=1)
-    #     unique_target.name="target_alleles"
-    #     unique_non_target=self._snp_data[non_target_columns].apply(lambda x: list(Counter(x).keys()), axis=1)
-    #     unique_non_target.name="non_target_alleles"
-    #     merged_alleles=pd.merge(unique_target, unique_non_target, right_index=True, left_index=True)
-    #     #if lenght of merge set of alleles is the same as lenght of both target and non-target alleles, there are no shared allels between two groups
-    #     merged_alleles["segragating_allele"]=merged_alleles.apply(lambda x: len( set( x["target_alleles"]+x["non_target_alleles"] ) ) == len( x["target_alleles"])+len(x["non_target_alleles"]) , axis=1)
-    #     return (unique_gt, list(merged_alleles.index[merged_alleles["segragating_allele"]]) )
     
-    def _count_gt_allele_freq(self, unique_gt: str ) -> Tuple:
-        print(unique_gt)
-        columns=self._snp_data.columns[np.asarray(self._column_to_gt)==unique_gt]
-        return (unique_gt, [Counter(f) for f in self._snp_data[columns].to_numpy()])
-
-    def _count_multi_gt_allele_freq(self, gts_to_exclude: Set[str] ) -> Tuple:
-        columns=self._snp_data.columns[ [f not in gts_to_exclude for f in self._column_to_gt] ]
-        gts_to_use=set([f for f in self._column_to_gt if f not in gts_to_exclude])
-        #columns=self._snp_data.columns[np.asarray(self._column_to_gt)==gts_to_use]
-        return (gts_to_use, [Counter(f) for f in self._snp_data[columns].to_numpy()])        
-    
-    def _find_defining_snps(self,target_gt: str) -> Tuple[str,pd.DataFrame]:
-        target_gt_and_subgts=set([f for f in  self._column_to_gt if f in self.genotype_hierarchy[target_gt]])
-        #there are three sets of gts:
-        #those that are targeted in this specific call
-        #those that are never targeted
-        #those that are targeted by another call
-        #the last category needs to be carefully managed
-        non_target_gts=[f for f in self._genotype_snps.columns if f not in target_gt_and_subgts ]
-        allele_split=pd.DataFrame(index=self._genotype_snps.index, columns=["GT", "Pass","Target_Allele", "Count_target","Count_non_target"])
-        for index in self._genotype_snps.index:
-            target_df=pd.DataFrame([(key,item) for f in self._genotype_snps.loc[ [index], list(target_gt_and_subgts)].values[0] for key, item in f.items()], columns=["Allele","Count"])
-            target_alleles=pd.pivot_table(data=target_df, values="Count", index="Allele", aggfunc=sum)
-            most_frequent_target_allele=target_alleles.index[np.argmax(target_alleles)]
-            most_frequent_count_target=target_alleles.loc[most_frequent_target_allele,"Count"]
-
-            non_target_df=pd.DataFrame([(key,item) for f in self._genotype_snps.loc[ [index], list(non_target_gts)].values[0] for key, item in f.items()], columns=["Allele","Count"])
-            non_target_alleles=pd.pivot_table(data=non_target_df, values="Count", index="Allele", aggfunc=sum)
-            if most_frequent_target_allele in non_target_alleles.index:
-                most_frequent_count_non_target=non_target_alleles.loc[most_frequent_target_allele,"Count"]
-            else:
-                most_frequent_count_non_target=0
-
-            #sensitivity - most frequent alleles prevalence in >X%
-            if most_frequent_count_target >= target_alleles["Count"].sum()*self.sensitivity_limit and \
-                most_frequent_count_non_target <= non_target_alleles["Count"].sum()*(1-self.specificity_limit):
-                allele_split.loc[ [index], ["GT", "Pass","Target_Allele", "Count_target","Count_non_target"]]=[target_gt,True,most_frequent_target_allele, most_frequent_count_target, most_frequent_count_non_target]
-            else:
-                allele_split.loc[ [index],  ["GT", "Pass","Target_Allele", "Count_target","Count_non_target"]]=[target_gt,False,most_frequent_target_allele, most_frequent_count_target, most_frequent_count_non_target]
-        return (target_gt, allele_split)
+    def _count_gt_allele_freq(self, target_gt: str ) -> Tuple[str, pd.DataFrame]:
+        print(target_gt)
+        target_columns=[f for f in self._snp_data.columns if mu.meta_data.loc[nc.get_sample(f),mu.genotype_column] in self.genotype_hierarchy[target_gt]]
+        non_target_columns=[f for f in self._snp_data.columns if f not in target_columns]
+        most_common_alleles=pd.DataFrame(index=self._snp_data.index, columns=["Target_top_allele","Target_top_count", "all_non_target_alleles",
+                                                                              "non_Target_top_count","Specificity","Sensitivity","Pass"])
+        most_common_alleles[ ["Target_top_allele","Target_top_count"] ]=[Counter(f).most_common()[0] for f in self._snp_data[ target_columns ].values]
+        most_common_alleles[ "all_non_target_alleles" ]=[Counter(f) for f in self._snp_data[ non_target_columns ].values]
+        most_common_alleles[ "non_Target_top_count" ]=[0 if most_common_target not in non_target_alleles else non_target_alleles[most_common_target] for non_target_alleles, most_common_target in most_common_alleles[ ["all_non_target_alleles","Target_top_allele"] ].values]
+        total_target_samples=len(target_columns)
+        total_non_target_samples=len(non_target_columns)
+        most_common_alleles["Sensitivity"]=most_common_alleles["Target_top_count"]/total_target_samples
+        most_common_alleles["Specificity"]=most_common_alleles["non_Target_top_count"]/total_non_target_samples
+        most_common_alleles["Pass"]=[ sen>=self.sensitivity_limit and spe<=1-self.specificity_limit for  spe, sen in zip(most_common_alleles["Specificity"],most_common_alleles["Sensitivity"])]
+        return (target_gt, most_common_alleles)
 
 
     def find_defining_snps(self, snp_data: pd.DataFrame) -> Dict[str, pd.DataFrame]: 
         self._column_to_gt: List[str]=[mu.meta_data.loc[nc.get_sample(f), mu.genotype_column] for f in snp_data.columns]
         self._snp_data=snp_data
-        self._genotype_snps: pd.DataFrame
+        #self._genotype_snps: pd.DataFrame
 
         if __name__ == 'hierarchy_utils':
-            gts_to_use=set()
-            for target_gt, target_subgts in self.genotype_hierarchy.items():
-                #add subgenotypes to set of target gts, but exclude the gts no in dataset samples
-                gts_to_use.update( [f for f in target_subgts if f in self._column_to_gt]  )
-                gts_to_use.add(target_gt)
+            # for gt in list(self.genotype_hierarchy.keys()):
+            #     self._count_gt_allele_freq(gt)
 
-            #gts_to_use=list(set([f for f in  self._column_to_gt if f in self.genotype_hierarchy]))
-            pool = Pool(processes= min(max(cpu_count()-1,1), len(gts_to_use) ))
-            result=pool.map( self._count_gt_allele_freq, list(gts_to_use) ) # dict[key=gt, value=Counter(alleleFreq)]
-            pool.close()
-            pool.join()
-            gts_alles: Dict[str, Counter]= dict(result)
-            del result
-            non_target_gts=self._count_multi_gt_allele_freq(gts_to_use)
-            
+            present_gts=set()
+            for gt in self.genotype_hierarchy.keys():
+                if gt not in self._column_to_gt:
+                    if len([ f for f in  self.genotype_hierarchy[gt] if f in self._column_to_gt ]):
+                        warnings.warn(f'Genotype {gt} is not present in samples, but some of its subgenotypes are')
+                        present_gts.add(gt)
+                    else:
+                        warnings.warn(f'Neither genotype {gt}, nor any of its subgenotypes are present among samples')
+                else:
+                    present_gts.add(gt)
         
-            gts_alleles_df=pd.DataFrame(index=snp_data.index, columns=list(gts_alles.keys()) )
-            gts_alleles_df["Non_target_gts"]=non_target_gts[1]
-            for gt in gts_alles:
-                gts_alleles_df[gt]=gts_alles[gt]
 
-            self._genotype_snps=gts_alleles_df
-            #pool = Pool(processes= min(max(cpu_count()-1,1), len(self.genotype_hierarchy) ))
-            pool = Pool(processes=1)
-            results=pool.map( self._find_defining_snps, list(self.genotype_hierarchy.keys()) ) # dict[key=gt, value=DataFrame]
+            pool = Pool(processes= min(  max(cpu_count()-1,1) , len(present_gts) ) )
+            results=pool.map( self._count_gt_allele_freq, list(present_gts) ) 
             pool.close()
             pool.join()
             genotype_alleles:Dict[str, pd.DataFrame]={}
