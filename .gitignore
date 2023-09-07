@@ -2,6 +2,8 @@
 test_data/vcfs/*
 test_genomes/*
 test_data/msa/*
+test_data/inputs/test_negative_genomes/genomes/*
+test_data/tempBlastDB/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

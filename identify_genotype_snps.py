@@ -1,5 +1,4 @@
 from inputs_validation import ValidateFiles
-import name_converters
 import time 
 from multiprocessing import cpu_count, Pool
 
@@ -10,98 +9,113 @@ from load_vcfs import VCFutilities
 from hierarchy_utils import HierarchyUtilities
 import pandas as pd
 from typing import Dict, List
-import sys
+#import sys
 from tqdm import tqdm
 
-##### !!Testing inputs
-name_converters.name_stubs.add(".sorted")
-#vcf_dir: str="/home/ubuntu/HandyAmpliconTool/test_data/vcfs/"
-vcf_dir: str="/home/ubuntu/converted_vcfs/"
-meta_data_file="/home/ubuntu/HandyAmpliconTool/test_data/TGC_data.csv"
-meta_deliminter=","
-genotype_column="Final_genotype"
-hierarchy_file="/home/ubuntu/HandyAmpliconTool/test_data/genotype_hierarcy.tsv"
-repeat_regions_file: str="/home/ubuntu/HandyAmpliconTool/test_data/ref_repeats.bed"
-##### !!Testing inputs
+class GenotypeSnpIdentifier:
 
-vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:3000]
-#vcf_files=["/home/ubuntu/converted_vcfs/32708_1#84.vcf"]
-file_validator=ValidateFiles()
-#file_validator.validate_many(vcf_files, "vcf")
-if repeat_regions_file!="":
-    file_validator.validate_bed(repeat_regions_file)
-    file_validator.contigs_in_vcf(repeat_regions_file,vcf_files[0])
-metadata_utils.load_metadata(meta_data_file,meta_deliminter)
-samples_without_metadata=metadata_utils.samples_in_metadata(vcf_files)
-for sample in samples_without_metadata:
-    vcf_files.remove(sample)
-metadata_utils.genotype_column=genotype_column #this will be an input
+    debug=True
+    def __init__(self, vcf_dir: str, hierarchy_file: str, meta_data_file: str,
+                 genotype_column: str, senstivity: int, specificity: int, **kwargs) -> None:
+        """Initialises class instance
 
-file_validator.validate_hierarchy(hierarchy_file)
-hierarchy_utils=HierarchyUtilities()
-hierarchy_utils.load_hierarchy(hierarchy_file)
+        :param vcf_dir: The directory containing VCF files that will be used to determine genotype defining SNPs, defaults to [DefaultParamVal]
+        :type vcf_dir: str(, optional)
 
-vcf_utils=VCFutilities()
-master_vcf=pd.DataFrame()
+        :param hierarchy_file: Tab delimited file specifying heirarchy of genotypes. Ex. "4 4.1 4.2 4.1.1" specifies 
+        that genotype 4 has three subgenotypes:4.1, 4.2 and 4.1.1
+        :type hierarchy_file: str
+                
+        :param meta_data_file: A file containing metadata for VCF samples. The genotypes of each sample in VCF 
+        will be determined based on a column from this file
+        :type meta_data_file: str
 
-start_time=time.time()
-vcfs: List[pd.DataFrame]=[]
-with tqdm(total=len(vcf_files)) as progress_meter:
-    for i, vcf in enumerate(vcf_files):
-        vcfs.append( vcf_utils.load_file(vcf ) )
-        progress_meter.update(1)
+        :param genotype_column: Name of column in meta_data_file that contains the genotype labels
+        :type meta_data_file: str
 
-##get total indices from all vcfs to preallocate dataframe, this is much faster than merge and the loading of the vcfs can be parallelised
-vcf_columns=[""]*len(vcfs)
-with tqdm(total=len(vcfs)) as progress_meter:
-    for i, vcf_data in enumerate(vcfs):
-        vcf_columns[i]=vcf_data.columns[-1]
-        progress_meter.update(1)
-all_vcf_indices=sorted(set([k for f in vcfs for k in f.index]))
-master_vcf=pd.DataFrame(index=all_vcf_indices, columns=vcf_columns)
-#master_vcf.sort_index(inplace=True)
+        :param repeat_regions_file: Bed file containing the regions (usually repeats) which will be excluded from analysis
+        :type repeat_regions_file: str, optional
+        
+        :param metadata_delimiter: Delimiter in the metadata file, defaults to ","
+        :type metadata_delimiter: str, optional
 
-if __name__ == '__main__':
-    # Multiprocessing doesn't speed up this step in short (few positions) datasets. Try later on longer dataset.
-    # vcf_utils.master_vcf_temp=master_vcf
-    # pool = Pool(processes=max(cpu_count()-1,1))
-    # pool.map( vcf_utils.merge_vcfs, vcfs)
-    # pool.close()
-    # pool.join()
-    
-    with tqdm(total=len(vcfs)) as progress_meter:
-        for vcf_data in vcfs:
-            master_vcf.loc[vcf_data.index, vcf_data.columns[-1]]=vcf_data[vcf_data.columns[-1]]
-            progress_meter.update(1)
+        :param senstivity: Cutoff SNP sensitivity of SNP vs target genotype ex. 99, 90. Intended to accomodate noisy data.
+        :type metadata_delimiter: float
 
-    del vcf
+        :param specificity: Cutoff SNP specificity of SNP vs target genotype ex. 99, 90. Intended to accomodate noisy data.
+        :type metadata_delimiter: float
 
-    master_vcf.fillna("REF", inplace=True)
-    #sys.exit()
+                
+        """
+        self.vcf_utils=VCFutilities()
+        self.file_validator=ValidateFiles()
+        self.master_vcf=pd.DataFrame()
+        if self.debug:
+            self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:500]
+        else:
+            self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ]
 
-    if repeat_regions_file!="":
-        vcf_utils.remove_repeat_regions(master_vcf,repeat_regions_file)
+        if kwargs.get("repeat_regions_file","")!="":
+            self.repeat_regions_file=kwargs.get("repeat_regions_file","")
+            self.file_validator.validate_bed(self.repeat_regions_file)
+            self.file_validator.contigs_in_vcf(self.repeat_regions_file,self.vcf_files[0]) ###!!!! Why 0?
 
-    # pool = Pool(processes=max(cpu_count()-1,1))
-    # pool.map( vcf_utils.merge_vcfs, vcfs)
-    # pool.close()
-    # pool.join()    
-    genotype_bifurcating_snps=hierarchy_utils.find_defining_snps(master_vcf)
+        metadata_utils.load_metadata(meta_data_file, kwargs.get("metadata_delimiter",",") )
+        samples_without_metadata=metadata_utils.samples_in_metadata(self.vcf_files)
+        for sample in samples_without_metadata:
+            self.vcf_files.remove(sample)
+        metadata_utils.genotype_column=genotype_column #this will be an input
 
-    #### !!!! For testing only
-    print('dense : {:0.0f} bytes'.format(master_vcf.memory_usage().sum() / 1e3) )
-    sdf = master_vcf.astype(pd.SparseDtype("str", "REF"))
-    print('sparse: {:0.0f} bytes'.format(sdf.memory_usage().sum() / 1e3) )
-    #master_vcf=master_vcf.astype(pd.SparseDtype("str", "REF"))
-    #print(Counter([meta_data.get_metavalue(f,"Final_genotype") for f in samples]))
+        if float(senstivity)<1 or float(specificity)<1:
+            raise ValueError("Either sensitivity or specifity is <1, did you enter deciman instead of integer? Ex: 0.1 instead of 10.")
+        self.file_validator.validate_hierarchy(hierarchy_file)
+        self.hierarchy_utils=HierarchyUtilities( sensitivity_limit=senstivity/100, specificity_limit=specificity/100)
+        self.hierarchy_utils.load_hierarchy(hierarchy_file)
 
-    gt_snp_df=pd.DataFrame(index=master_vcf.index, columns=list(genotype_bifurcating_snps.keys())).fillna(False)
-    for gt in genotype_bifurcating_snps:
-        gt_snp_df.loc[ genotype_bifurcating_snps[gt].index,  gt ]=genotype_bifurcating_snps[gt]["Pass"]
+    def identify_snps(self) -> pd.DataFrame:
+        """Scans VCF files for SNPs that segregate genotypes of interest from the rest.
 
-    #snp_to_drop=[index for index in gt_snp_df.index if True not in gt_snp_df.loc[ index ].values]
+        """
+        start_time=time.time()
+        vcfs: List[pd.DataFrame]=[]
+        with tqdm(total=len(self.vcf_files)) as progress_meter:
+            for i, vcf in enumerate(self.vcf_files):
+                vcfs.append( self.vcf_utils.load_file(vcf ) )
+                progress_meter.update(1)
 
-    #gt_snp_df.drop(index=snp_to_drop, inplace=True)
+        ##get total indices from all vcfs to preallocate dataframe, this is much faster than merge and the loading of the vcfs can be parallelised
+        vcf_columns=[""]*len(vcfs)
+        with tqdm(total=len(vcfs)) as progress_meter:
+            for i, vcf_data in enumerate(vcfs):
+                vcf_columns[i]=vcf_data.columns[-1]
+                progress_meter.update(1)
+        all_vcf_indices=sorted(set([k for f in vcfs for k in f.index]))
+        master_vcf=pd.DataFrame(index=all_vcf_indices, columns=vcf_columns)
 
-    #### END Identification of genotype defining SNPS #### 
-    gt_snp_df.to_csv("/home/ubuntu/HandyAmpliconTool/test_data/test_gt_snps.tsv", sep="\t")
+        with tqdm(total=len(vcfs)) as progress_meter:
+            for vcf_data in vcfs:
+                master_vcf.loc[vcf_data.index, vcf_data.columns[-1]]=vcf_data[vcf_data.columns[-1]]
+                progress_meter.update(1)
+
+        del vcfs
+
+        master_vcf.fillna("REF", inplace=True)
+        #sys.exit()
+
+        if self.repeat_regions_file!="":
+            self.vcf_utils.remove_repeat_regions(master_vcf,self.repeat_regions_file)
+
+        genotype_bifurcating_snps=self.hierarchy_utils.find_defining_snps(master_vcf)
+
+        #### !!!! For testing only
+        print('dense : {:0.0f} bytes'.format(master_vcf.memory_usage().sum() / 1e3) )
+        sdf = master_vcf.astype(pd.SparseDtype("str", "REF"))
+        print('sparse: {:0.0f} bytes'.format(sdf.memory_usage().sum() / 1e3) )
+        #master_vcf=master_vcf.astype(pd.SparseDtype("str", "REF"))
+        #print(Counter([meta_data.get_metavalue(f,"Final_genotype") for f in samples]))
+
+        gt_snp_df=pd.DataFrame(index=master_vcf.index, columns=list(genotype_bifurcating_snps.keys())).fillna(False)
+        for gt, snps_df in genotype_bifurcating_snps.items():
+            gt_snp_df.loc[ snps_df.index,  gt ]=snps_df["Pass"]
+
+        return gt_snp_df

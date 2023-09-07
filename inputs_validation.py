@@ -4,6 +4,7 @@
 from os.path import exists
 import warnings
 from tqdm import tqdm
+from Bio import SeqIO
 
 class ValidateFiles:
 
@@ -68,18 +69,15 @@ class ValidateFiles:
             for line in (bed_file):
                 bed_contigs.add(line.split("\t")[0])
 
-        with open(fasta_file_name) as fasta_file:        
-            for line in fasta_file:
-                if line[0]==">":
-                    contig_id=line.split(" ")[0][1:]
-                    if contig_id in bed_contigs:
-                        bed_contigs.remove(contig_id)
-                if len(bed_contigs)==0:
-                    break
-            if len(bed_contigs)!=0:
-                missing_contigs="\n".join( list(bed_contigs)[0:min(len(bed_contigs),10)] )
-                raise ValueError(f'Some bed file {bed_file_name} contig IDs not found in fasta file {fasta_file_name} (first 10):\n {missing_contigs} ')
-        return None
+        for record in SeqIO.parse(fasta_file_name,"fasta"):
+            if record.id in bed_contigs:
+                bed_contigs.remove(record.id)
+            if len(bed_contigs)==0:
+                break
+        if len(bed_contigs)!=0:
+            missing_contigs="\n".join( list(bed_contigs)[0:min(len(bed_contigs),10)] )
+            raise ValueError(f'Some bed file {bed_file_name} contig IDs not found in fasta file \n Ex. {fasta_file_name} (first 10):\n {missing_contigs} ')
+        return True
             
     def contigs_in_vcf(self, bed_file_name: str, vcf_file_name: str) -> bool:
         ### Assume that bed and fasta files have already been validated

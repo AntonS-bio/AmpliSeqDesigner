@@ -10,10 +10,10 @@ import warnings
 
 class HierarchyUtilities:
 
-    def __init__(self) -> None:
+    def __init__(self, sensitivity_limit: float, specificity_limit: float) -> None:
         self.genotype_hierarchy: Dict[str,List[str]]={}
-        self.sensitivity_limit=0.99
-        self.specificity_limit=0.99
+        self.sensitivity_limit=sensitivity_limit
+        self.specificity_limit=specificity_limit
 
 
     def load_hierarchy(self, filename) -> None:
@@ -62,12 +62,8 @@ class HierarchyUtilities:
     def find_defining_snps(self, snp_data: pd.DataFrame) -> Dict[str, pd.DataFrame]: 
         self._column_to_gt: List[str]=[mu.meta_data.loc[nc.get_sample(f), mu.genotype_column] for f in snp_data.columns]
         self._snp_data=snp_data
-        #self._genotype_snps: pd.DataFrame
 
         if __name__ == 'hierarchy_utils':
-            # for gt in list(self.genotype_hierarchy.keys()):
-            #     self._count_gt_allele_freq(gt)
-
             present_gts=set()
             for gt in self.genotype_hierarchy.keys():
                 if gt not in self._column_to_gt:
@@ -81,6 +77,7 @@ class HierarchyUtilities:
         
 
             pool = Pool(processes= min(  max(cpu_count()-1,1) , len(present_gts) ) )
+            #pool = Pool(processes= 1 )
             results=pool.map( self._count_gt_allele_freq, list(present_gts) ) 
             pool.close()
             pool.join()
