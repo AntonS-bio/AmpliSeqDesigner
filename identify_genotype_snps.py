@@ -9,14 +9,14 @@ from load_vcfs import VCFutilities
 from hierarchy_utils import HierarchyUtilities
 import pandas as pd
 from typing import Dict, List
-#import sys
+from data_classes import Genotype, Genotypes
 from tqdm import tqdm
 
 class GenotypeSnpIdentifier:
 
     debug=True
     def __init__(self, vcf_dir: str, hierarchy_file: str, meta_data_file: str,
-                 genotype_column: str, senstivity: int, specificity: int, **kwargs) -> None:
+                 genotype_column: str, senstivity: float, specificity: float, **kwargs) -> None:
         """Initialises class instance
 
         :param vcf_dir: The directory containing VCF files that will be used to determine genotype defining SNPs, defaults to [DefaultParamVal]
@@ -51,7 +51,7 @@ class GenotypeSnpIdentifier:
         self.file_validator=ValidateFiles()
         self.master_vcf=pd.DataFrame()
         if self.debug:
-            self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:500]
+            self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:2000]
         else:
             self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ]
 
@@ -72,12 +72,12 @@ class GenotypeSnpIdentifier:
         self.hierarchy_utils=HierarchyUtilities( sensitivity_limit=senstivity/100, specificity_limit=specificity/100)
         self.hierarchy_utils.load_hierarchy(hierarchy_file)
 
-    def identify_snps(self) -> pd.DataFrame:
+    def identify_snps(self) -> Genotypes:
         """Scans VCF files for SNPs that segregate genotypes of interest from the rest.
 
         """
-        start_time=time.time()
         vcfs: List[pd.DataFrame]=[]
+        print("Loading VCFs")
         with tqdm(total=len(self.vcf_files)) as progress_meter:
             for i, vcf in enumerate(self.vcf_files):
                 vcfs.append( self.vcf_utils.load_file(vcf ) )
@@ -105,7 +105,7 @@ class GenotypeSnpIdentifier:
         if self.repeat_regions_file!="":
             self.vcf_utils.remove_repeat_regions(master_vcf,self.repeat_regions_file)
 
-        genotype_bifurcating_snps=self.hierarchy_utils.find_defining_snps(master_vcf)
+        genotype_bifurcating_snps: Genotypes=self.hierarchy_utils.find_defining_snps(master_vcf)
 
         #### !!!! For testing only
         print('dense : {:0.0f} bytes'.format(master_vcf.memory_usage().sum() / 1e3) )
@@ -114,8 +114,4 @@ class GenotypeSnpIdentifier:
         #master_vcf=master_vcf.astype(pd.SparseDtype("str", "REF"))
         #print(Counter([meta_data.get_metavalue(f,"Final_genotype") for f in samples]))
 
-        gt_snp_df=pd.DataFrame(index=master_vcf.index, columns=list(genotype_bifurcating_snps.keys())).fillna(False)
-        for gt, snps_df in genotype_bifurcating_snps.items():
-            gt_snp_df.loc[ snps_df.index,  gt ]=snps_df["Pass"]
-
-        return gt_snp_df
+        return genotype_bifurcating_snps

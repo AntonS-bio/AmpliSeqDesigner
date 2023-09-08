@@ -33,7 +33,6 @@ class MsaGenerator:
 
     def generate_msa(self, amplicons:List[Amplicon], output_dir: str, genomes_dir:str) -> pd.DataFrame:
         self.output_dir=output_dir
-        #self.msa_file_name=f'{self.output_dir}/{msa_file_name}'        
         if not exists(self.output_dir):
             mkdir(self.output_dir)
         #Collect fasta files against which to run blast
@@ -43,9 +42,11 @@ class MsaGenerator:
                 raise ValueError(f'No .fna or .fasta files found in {genomes_dir} or sub-directories.')
             else:
                 raise ValueError(f'No .fna or .fasta files found in {genomes_dir}. Did you mean to include sub-directories?')
+        self.file_to_search=self.file_to_search[0:20] ### !! DEBUG only
         blast_results_raw=self._run_blast(amplicons, self.file_to_search)
         blast_results=self._process_blast_results(blast_results_raw, amplicons)
 
+        print("Generating MSAs")
         with tqdm(total=len(blast_results)) as progress_meter:
             msa_dfs={}
             for amplicon_id, amplicon_results in blast_results.items():
@@ -55,7 +56,7 @@ class MsaGenerator:
                 amplicon_seq=[f.seq for f in amplicons if f.id==amplicon_id][0]
                 msa_result=self._align_results(amplicon_results, amplicon_id, amplicon_seq)
                 msa_dfs[amplicon_id]=self._msa_to_dataframe(msa_result)
-            return msa_dfs
+        return msa_dfs
 
     def _run_blast(self, subject_sequences: List[Amplicon], query_files: List[str]) -> List[BlastResult] :
         """Runs blast against a single file at a time using Pool
@@ -65,10 +66,7 @@ class MsaGenerator:
             mkdir(self.temp_blast_db_dir)
         with open(self.temp_blast_db_dir+"/temp.fasta", "w") as temp_file:
             for amplicon in subject_sequences:
-                prefix=""
-                if amplicon.id[0]!=">":
-                    prefix=">"
-                temp_file.write(prefix+amplicon.id+"\n"+amplicon.seq+"\n")
+                temp_file.write(">"+amplicon.id+"\n"+amplicon.seq+"\n")
         subject_seq_file=self.temp_blast_db_dir+"/temp.fasta"
 
         blast_runner=BlastRunner()           
@@ -76,6 +74,7 @@ class MsaGenerator:
         blast_results: List[ Tuple[str, List[BlastResult]] ]=[]
 
         if __name__ == 'generate_msa':
+            print("Running BLAST against genomes")
             pool = Pool(processes= min(  max(cpu_count()-1,1) , self.cpu_threads ) )
             blast_results = list(tqdm( pool.imap(func=blast_runner.run_from_file, iterable=query_files), total=len(query_files) ))
             return [item for sublist in blast_results for item in sublist]
@@ -136,7 +135,6 @@ class MsaGenerator:
                 current_seq=current_seq+line
 
         return msa_results
-
 
     def _msa_to_dataframe(self, msa_result: Dict[str, str]) -> pd.DataFrame:
         indices=list(msa_result.keys())

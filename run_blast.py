@@ -5,11 +5,6 @@ from data_classes import BlastResult
 from typing import List
 
 class BlastRunner:
-    # min_length: int = 0 #min length for hit to be valid
-    # max_length: int = 0 #max length for hit to be valid
-    # min_identity: int = 50 #min identity for hit to be valid
-    # db_file_name: str = ""
-    # db_dir: str=""
     def __init__(self) -> None:
         pass
     

@@ -4,8 +4,9 @@
 # import name_converters
 # import time 
 import sys
-# from multiprocessing import cpu_count, pool
-# from os import listdir
+from typing import Tuple, List, Dict
+import pickle
+from data_classes import Genotype, Genotypes
 
 #### START Input validation tests ####
 # from inputs_validation import ValidateFiles
@@ -22,6 +23,7 @@ import sys
 
 #### START Identify genotype defining SNPs ####
 # from identify_genotype_snps import GenotypeSnpIdentifier
+# from typing import List
 # import name_converters
 # import pandas as pd
 # from collections import Counter
@@ -33,35 +35,29 @@ import sys
 #                                      genotype_column="Final_genotype",
 #                                      repeat_regions_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/ref_repeats.bed",
 #                                      meta_deliminter=",",
-#                                      specificity=90.5,
-#                                      senstivity=90.5)
-# gt_snp_df: pd.DataFrame = snp_identifier.identify_snps()
+#                                      specificity=99,
+#                                      senstivity=99)
+# genotypes: Genotypes = snp_identifier.identify_snps()
 
-# snp_to_drop=[index for index in gt_snp_df.index if True not in gt_snp_df.loc[ [index] ].values]
-# gt_snp_df.drop(index=snp_to_drop, inplace=True)
+# genotypes.genotypes_to_snp_matrix().to_csv("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_v2.tsv", sep="\t", index=False)
 
-
-# ### make output tsv pretty, as pandas can't really output or load multi index dataframes via tsv
-# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.tsv","w") as ouput_file:
-#     ouput_file.write("\t".join( [f for f in ["Contig","Position"]+list(gt_snp_df.columns) ] )+"\n")
-#     for i, index in enumerate(gt_snp_df.index):
-#         ouput_file.write("\t".join([str(f) for f in [index[0],index[1]]+list( gt_snp_df.loc[ [index] ].values[0]) ])+"\n")
-
-# gt_snp_df.to_pickle("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl")
+# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "wb") as output:
+#     pickle.dump(genotypes, output)
 
 #### END Identify genotype defining SNPs ####
 
-#sys.exit()
 
 #### START optimise the selection of SNPs ####
+
 # import pandas as pd
 # from short_list_snps import SnpOptimiser
 
-# gt_snp_df=pd.read_pickle("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl")
+# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "rb") as pickled_file:
+#     gt_snps: Genotypes = pickle.load(pickled_file)
 
-# snp_opimiser=SnpOptimiser(gt_snp_df)
+# snp_opimiser=SnpOptimiser()
 # max_iterval_len=1000
-# amplicon_intervals=snp_opimiser.optimise(max_iterval_len,gt_snp_df)
+# amplicon_intervals=snp_opimiser.optimise(max_iterval_len,gt_snps)
 # with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/multi_gt_intervals.bed", "w") as output_bed:
 #     for interval in amplicon_intervals:
 #         interval_start=min([f[1] for f in interval["snps"]])
@@ -81,7 +77,9 @@ snp_identifier=IdentifySpeciesSnps(ref_fasta="/home/ubuntu/HandyAmpliconTool/tes
                                    negative_genomes_dir="/home/ubuntu/HandyAmpliconTool/test_data/inputs/test_negative_genomes/genomes",
                                    temp_blast_db_dir="/home/ubuntu/HandyAmpliconTool/test_data/tempBlastDB/",
                                    amplicons_bed='/home/ubuntu/HandyAmpliconTool/test_data/outputs/multi_gt_intervals.bed')
-snp_identifier.identify_snps()
+#snp_identifier.identify_insequence_snps()
+
+snp_identifier.identify_flanking_snps(max_seq_len=1000)
 #### START MSA generation section ####
 
 

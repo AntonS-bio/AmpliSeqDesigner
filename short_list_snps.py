@@ -2,26 +2,23 @@ import pandas as pd
 import numpy as np
 from collections import Counter
 from typing import List
-
+from data_classes import Genotype, Genotypes
 class SnpOptimiser:
 
-    def __init__(self, snps_list: pd.DataFrame) -> None:
+    def __init__(self) -> None:
         pass
-        # self.gt_snp_df=pd.read_csv("/home/ubuntu/HandyAmpliconTool/test_data/test_gt_snps.tsv", sep="\t", index_col=[0])
 
-        # snp_to_drop=[index for index in self.gt_snp_df.index if True not in self.gt_snp_df.loc[ index ].values]
+    def optimise(self, snp_interval: int, genotypes: Genotypes) -> List[object]:
+        """Select SNPs based on how many fall within a maximum permitted amplicon range
 
-        # self.gt_snp_df.drop(index=snp_to_drop, inplace=True)
+        :param snp_interval: Maximum length of amplicon 
+        :type snp_interval: int
 
-        # self.gt_snp_df["Chr"]=[index.split(",")[0].replace("(","").replace("'","") for index in self.gt_snp_df.index]
-        # self.gt_snp_df["Pos"]=[int(index.split(",")[1].replace(")","")) for index in self.gt_snp_df.index]
-        # self.gt_snp_df.set_index(["Chr", "Pos"], inplace=True)
-
-
-    def optimise(self, snp_interval: int, gt_snp_df: pd.DataFrame) -> List[object]:
-        ### Take first SNP and continue checking SNPs until range exceeds 1,000
+        :param genotypes: genotypes with already identified genotypes defining SNPs
+        :type genotypes: Genotypes
+        """        
         interval_snps=[]
-        sorted_snps=sorted(gt_snp_df.index, key=lambda x: (x[0], x[1]), reverse=False)
+        sorted_snps=genotypes.all_snps_coord_sorted()
         i=0
         max_reached_index=0
         while i<len(sorted_snps):
@@ -36,9 +33,23 @@ class SnpOptimiser:
         # check which GTs are captured by which lists of SNPs
         # Remove those that capture same GT multiple times - this is likely due to structural variant
         for interval in interval_snps:
-            interval["genotypes"]=set(gt_snp_df.loc[interval["snps"]].apply(lambda row: row[row==True], axis=1)) #row==True to be clear what's being tested
+            interval["genotypes"]=set()
+            for genotype in genotypes.genotypes:
+                temp=set(interval['snps']) & set(genotype.defining_snp_coordinates) #this is probably not the most efficient way.
+                if len(temp)>1: #two snps defining same genotype in close proximity
+                    #probably a structural variant which are currently not supported
+                    continue
+                elif len(temp)==1:
+                    interval["genotypes"].add(genotype.name)
 
         interval_snps=[snp_interval for snp_interval in interval_snps if len(snp_interval["genotypes"])>1 ]
-
+        captured_genotypes=set([f for genotypes in interval_snps for f in genotypes["genotypes"]])
+        not_captured_genotypes=[f.name for f in genotypes.genotypes if f.name not in captured_genotypes ]
+        print(f'Genotypes not captured by intervals: {", ".join(not_captured_genotypes)}')
+        not_captured_due_to_no_snps=[f.name for f in genotypes.genotypes if len(f.defining_snp_coordinates)==0 ]
+        if len(not_captured_due_to_no_snps)>0:
+            print(f'Of these {", ".join(not_captured_due_to_no_snps)} do not have defining SNPs')
+        else:
+            print(f'All of them have defining SNPs')
         return interval_snps
 
