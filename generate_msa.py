@@ -31,7 +31,7 @@ class MsaGenerator:
         else:
             self.file_to_search = [dir_to_search+"/"+f for f in listdir(dir_to_search) if isfile(join(dir_to_search, f)) and (splitext(f)[-1]==".fasta" or splitext(f)[-1]==".fna")]
 
-    def generate_msa(self, amplicons:List[Amplicon], output_dir: str, genomes_dir:str) -> pd.DataFrame:
+    def generate_msa(self, amplicons:List[Amplicon], output_dir: str, genomes_dir:str) -> Dict[str, pd.DataFrame]:
         self.output_dir=output_dir
         if not exists(self.output_dir):
             mkdir(self.output_dir)
@@ -42,13 +42,13 @@ class MsaGenerator:
                 raise ValueError(f'No .fna or .fasta files found in {genomes_dir} or sub-directories.')
             else:
                 raise ValueError(f'No .fna or .fasta files found in {genomes_dir}. Did you mean to include sub-directories?')
-        self.file_to_search=self.file_to_search[0:20] ### !! DEBUG only
+        self.file_to_search=self.file_to_search
         blast_results_raw=self._run_blast(amplicons, self.file_to_search)
         blast_results=self._process_blast_results(blast_results_raw, amplicons)
 
         print("Generating MSAs")
         with tqdm(total=len(blast_results)) as progress_meter:
-            msa_dfs={}
+            msa_dfs: Dict[str, pd.DataFrame]={}
             for amplicon_id, amplicon_results in blast_results.items():
                 progress_meter.update(1)
                 if len(amplicon_results)==0:

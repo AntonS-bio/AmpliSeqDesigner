@@ -1,6 +1,8 @@
 from typing import List, Tuple
 import pandas as pd
 import uuid
+from io import TextIOWrapper
+from Bio import SeqIO
 
 class SNP:
     def __init__(self, **kwargs) -> None:
@@ -76,12 +78,12 @@ class SNP:
         self._sensitivity = value
 
     @property
-    def specificity(self) -> str:
+    def specificity(self) -> float:
         return self._specificity
 
     @specificity.setter
-    def specificity(self, value: str):
-        self._specificity = value
+    def specificity(self, value: float):
+        self._specificity = float(value)
 
     @property
     def passes_filters(self) -> bool:
@@ -109,6 +111,216 @@ class SNP:
     def is_species_snp(self, value: bool):
         self._is_species_snp = value
         self._is_genotype_snp=False
+
+    def to_file(self, file_handle: TextIOWrapper, **kwargs):
+        """Constructor
+        :param file_handle: File handle to which the SNP will be written
+        :type file_handle: TextIOWrapper
+
+        :param sep: Column separator to use, defaults to tab
+        :type sep: str, optional
+        """        
+        sep=kwargs.get("sep","\t")
+        name=f'{self._ref_base}/{self.alt_base}'
+        if self._is_species_snp:
+            name=name+"/species"
+        elif self._is_genotype_snp:
+            name=name+"/genotype"
+
+        file_handle.write(sep.join( [str(f) for f in [self._ref_contig_id, self.position, self.position+1, name] ] )+"\n")
+
+class Amplicon:
+    def __init__(self, name: str, seq: str) -> None:
+        self._name: str=name
+        self.seq: str=seq
+        self._snps:List[SNP]=[]
+        self._left_flanking_id=""
+        self._right_flanking_id=""
+        self._has_homologues=False
+        self._uuid=str(uuid.uuid4())
+
+    @classmethod
+    def from_bed_line(cls, bed_line:str, ref_fasta_file: str):
+        """Constructor using bedfile lines. 
+        :param bed_line: String from bedfile, if the line has fourth column, this will be included in amplicon name
+        :type bed_file: str
+
+        :param ref_fasta_file: Path to fasta file on which the amplicon is based
+        :type ref_fasta_file: str
+
+        """
+        bed_line_values = bed_line.strip().split("\t")
+        ampl_chr, ampl_start, ampl_end=bed_line_values[0:3]
+        if len(bed_line_values)>=4:
+            name='_'.join( [str(f) for f in bed_line_values[0:4] ] )
+        else:
+            name='_'.join( [str(f) for f in bed_line_values[0:3] ] )
+        ampl_start=int(ampl_start)
+        ampl_end=int(ampl_end)
+        for record in SeqIO.parse(ref_fasta_file,"fasta"):
+            if record.id==ampl_chr:
+                    new_amplicon=cls(name, str(record.seq[ampl_start:ampl_end]))
+                    new_amplicon.ref_contig=record.id
+                    new_amplicon.ref_start=ampl_start
+                    new_amplicon.ref_end=ampl_end
+                    return new_amplicon
+        raise ValueError(f'Contig {ampl_chr} is not found in fasta file: {ref_fasta_file}')
+
+    @property
+    def left_flanking_id(self) -> str:
+        return self._left_flanking_id
+
+    @left_flanking_id.setter
+    def left_flanking_id(self, value: str):
+        self._left_flanking_id = value
+
+    @property
+    def right_flanking_id(self) -> str:
+        return self._right_flanking_id
+
+    @right_flanking_id.setter
+    def right_flanking_id(self, value: str):
+        self._right_flanking_id = value
+
+    @property
+    def has_flanking(self) -> bool:
+        return self._left_flanking_id!="" and self._right_flanking_id!=""
+
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def id(self) -> str:
+        return self._uuid
+
+    @property
+    def len(self) -> int:
+        return len(self.seq)
+
+    @property
+    def has_homologues(self) -> bool:
+        return self._has_homologues
+
+    @has_homologues.setter
+    def has_homologues(self, value: bool):
+        self._has_homologues = value
+
+    @property
+    def ref_contig(self) -> str:
+        return self._ref_contig
+
+    @ref_contig.setter
+    def ref_contig(self, value: str):
+        self._ref_contig = value
+
+    @property
+    def ref_start(self) -> int:
+        return self._ref_start
+
+    @ref_start.setter
+    def ref_start(self, value: int):
+        self._ref_start = int(value)
+
+    @property
+    def ref_end(self) -> int:
+        return self._ref_end
+
+    @ref_end.setter
+    def ref_end(self, value: int):
+        self._ref_end = int(value)
+
+    def snp_in_amplicon(self, snp:SNP) -> bool:
+        if snp.ref_contig_id==self.ref_contig and \
+        snp.position>=self.ref_start and snp.position<=self.ref_end:
+            return True
+        else:
+            return False
+
+    @property
+    def snps(self) -> List[SNP]:
+        return self._snps
+
+    @snps.setter
+    def snps(self, value: List[SNP]):
+        self._snps = value
+
+    def __hash__(self):
+        return hash(self.id)
+
+class FlankingAmplicon(Amplicon):
+    """Class for defining amplicons flanking a parent amplicon
+    """
+
+    def __init__(self, name: str, seq: str, parent: Amplicon, is_left: bool, max_len: int) -> None:
+        super().__init__(name, seq)
+        self._parent=parent
+        if is_left:
+            self._parent.left_flanking_id=self.id
+        else:
+            self._parent.right_flanking_id=self.id
+
+        self._is_left=is_left
+        self._max_len=max_len
+    
+    @property
+    def parent(self) -> Amplicon:
+        return self._parent
+
+    @property
+    def max_len(self) -> int:
+        return self._max_len
+
+    @max_len.setter
+    def max_len(self, value: int):
+        self._max_len = int(value)
+
+    @property
+    def is_left(self) -> bool:
+        return self._is_left
+
+    @is_left.setter
+    def is_left(self, value: bool):
+        self._is_left = value
+
+
+    @classmethod
+    def from_parent_bed_line(cls,ref_fasta_file: str, is_left: bool, max_len:int, parent: Amplicon):
+        """Constructor basesd on parent sequence and maximum amplicon length. 
+        :param ref_fasta_file: Path to fasta file on which the amplicon is based
+        :type ref_fasta_file: str
+
+        :param is_left: Boolean indicating if flank is left or right of parent amplicon
+        :type is_left: str
+
+        :param max_len: Maximum length of parent and this flanking sequence
+        :type max_len: int        
+
+        :param parent: The parent (i.e. actual or central) amplicon to which this one will be flanking
+        :type parent: Amplicon
+        """
+        name = parent._name+"_left" if is_left else parent._name+"_right"
+        for record in SeqIO.parse(ref_fasta_file,"fasta"):
+            if record.id==parent.ref_contig:
+                    new_amplicon=cls(name, "", parent, is_left, max_len )
+                    ampl_start, ampl_end = new_amplicon._calculate_flanking_coordinates(record)
+                    new_amplicon.seq=str(record.seq[ampl_start:ampl_end])
+                    new_amplicon.ref_contig=record.id
+                    new_amplicon.ref_start=ampl_start
+                    new_amplicon.ref_end=ampl_end
+                    return new_amplicon
+        raise ValueError(f'Contig {parent.ref_contig} is not found in fasta file: {ref_fasta_file}')
+
+    def _calculate_flanking_coordinates(self, record: SeqIO.SeqRecord) -> Tuple[int,int]:
+        """Calculates the strat and end of the flanking amplicon sequences based on amplicon length
+        and maximum permitted lenght of the amplicon
+        """
+        if self.is_left:
+            return (max(self.parent.ref_start-self.max_len,0),self.parent.ref_start)
+        else:
+            return (self.parent.ref_end , min(self.parent.ref_end+self.max_len,len(record.seq)))
+
 
 class Genotype:
 
@@ -141,60 +353,6 @@ class Genotype:
     def defining_snp_coordinates(self) -> List[Tuple[str,int]]:
         return [f.coordinate for f in self.defining_snps if f.passes_filters]
     
-
-class Amplicon:
-    def __init__(self, name, seq) -> None:
-        self._name: str=name
-        self.seq: str=seq
-        self._uuid=str(uuid.uuid4())
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    @property
-    def id(self) -> str:
-        return self._uuid
-
-
-    @property
-    def left_flank(self) -> bool:
-        return self._left_flank
-
-    @left_flank.setter
-    def left_flank(self, value: bool):
-        self._left_flank = value
-        self._right_flank = False
-        self._middle = False
-
-    @property
-    def right_flank(self) -> bool:
-        return self._right_flank
-
-    @right_flank.setter
-    def right_flank(self, value: bool):
-        self._right_flank = value
-        self._left_flank = False
-        self._middle = False
-
-    @property
-    def is_flanking(self) -> bool:
-        return self._right_flank or self._left_flank
-
-    @property
-    def middle(self) -> bool:
-        return self._middle
-
-    @middle.setter
-    def middle(self, value: bool):
-        self._middle = value
-        self._right_flank = False
-        self._left_flank = False
-
-    @property
-    def len(self) -> int:
-        return len(self.seq)
-
 class BlastResult:
     def __init__(self) -> None:
         pass
@@ -297,7 +455,7 @@ class Genotypes:
         return self._genotypes
 
     @genotypes.setter
-    def position(self, value: List[Genotype]):
+    def genotypes(self, value: List[Genotype]):
         self._genotypes = list(value)
 
     def all_snps_coord_sorted(self) -> List[Tuple[str, int]]:

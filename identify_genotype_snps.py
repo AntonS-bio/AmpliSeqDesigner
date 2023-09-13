@@ -19,8 +19,8 @@ class GenotypeSnpIdentifier:
                  genotype_column: str, senstivity: float, specificity: float, **kwargs) -> None:
         """Initialises class instance
 
-        :param vcf_dir: The directory containing VCF files that will be used to determine genotype defining SNPs, defaults to [DefaultParamVal]
-        :type vcf_dir: str(, optional)
+        :param vcf_dir: The directory containing VCF files that will be used to determine genotype defining SNPs, defaults to ""
+        :type vcf_dir: str, optional
 
         :param hierarchy_file: Tab delimited file specifying heirarchy of genotypes. Ex. "4 4.1 4.2 4.1.1" specifies 
         that genotype 4 has three subgenotypes:4.1, 4.2 and 4.1.1
