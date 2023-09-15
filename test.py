@@ -22,50 +22,57 @@ from data_classes import Genotype, Genotypes, SNP, FlankingAmplicon, Amplicon
 #### END Input validation tests ####
 
 #### START Identify genotype defining SNPs ####
-# from identify_genotype_snps import GenotypeSnpIdentifier
-# from typing import List
-# import name_converters
-# import pandas as pd
-# from collections import Counter
-# name_converters.name_stubs.add(".sorted")
+from identify_genotype_snps import GenotypeSnpIdentifier
+from typing import List
+import name_converters
+import pandas as pd
+from collections import Counter
+name_converters.name_stubs.add(".sorted")
 
-# snp_identifier=GenotypeSnpIdentifier(vcf_dir="/home/ubuntu/converted_vcfs/",
-#                                      hierarchy_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/extra_genotypes_hierarchy.tsv",
-#                                      meta_data_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/TGC_data.csv",
-#                                      genotype_column="Final_genotype",
-#                                      repeat_regions_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/ref_repeats.bed",
-#                                      meta_deliminter=",",
-#                                      specificity=99,
-#                                      senstivity=99)
-# genotypes: Genotypes = snp_identifier.identify_snps()
+snp_identifier=GenotypeSnpIdentifier(vcf_dir="/home/ubuntu/converted_vcfs/",
+                                     hierarchy_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/extra_genotypes_hierarchy.tsv",
+                                     meta_data_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/TGC_data.csv",
+                                     genotype_column="Final_genotype",
+                                     repeat_regions_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/ref_repeats.bed",
+                                     meta_deliminter=",",
+                                     specificity=99,
+                                     senstivity=99)
+genotypes: Genotypes = snp_identifier.identify_snps()
 
-# genotypes.genotypes_to_snp_matrix().to_csv("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_v2.tsv", sep="\t", index=False)
+genotypes.genotypes_to_snp_matrix().to_csv("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_v2.tsv", sep="\t", index=False)
 
-# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "wb") as output:
-#     pickle.dump(genotypes, output)
+with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/genotype_snps.tsv", "w") as snps_file:
+    for genotype in genotypes.genotypes:
+        for snp in genotype.defining_snps:
+            if snp.passes_filters:
+                fourth_col=f'{snp.ref_base}/{snp.alt_base}/{genotype.name}/SP:{snp.specificity:.1f}/SE:{snp.sensitivity:.1f}'
+                snps_file.write("\t".join( [str(f) for f in [snp.ref_contig_id, snp.position, snp.position, fourth_col] ])+"\n")
+
+with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "wb") as output:
+    pickle.dump(genotypes, output)
 
 #### END Identify genotype defining SNPs ####
 
 
 #### START optimise the selection of SNPs ####
 
-import pandas as pd
-from short_list_snps import SnpOptimiser
+# import pandas as pd
+# from short_list_snps import SnpOptimiser
 
-with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "rb") as pickled_file:
-    gt_snps: Genotypes = pickle.load(pickled_file)
+# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "rb") as pickled_file:
+#     gt_snps: Genotypes = pickle.load(pickled_file)
 
-snp_opimiser=SnpOptimiser()
-max_iterval_len=1000
-amplicon_intervals=snp_opimiser.optimise(max_iterval_len,gt_snps)
-with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/multi_gt_intervals.bed", "w") as output_bed:
-    for interval in amplicon_intervals:
-        interval_start=min([f[1] for f in interval["snps"]])
-        interval_end=max([f[1] for f in interval["snps"]])
-        interval_len=interval_end-interval_start
-        chr=interval["snps"][0][0]
-        gts="_".join(interval["genotypes"])
-        output_bed.write('\t'.join([chr, str(interval_start),str(interval_end),gts])+"\n")
+# snp_opimiser=SnpOptimiser()
+# max_iterval_len=1000
+# amplicon_intervals=snp_opimiser.optimise(max_iterval_len,gt_snps)
+# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/multi_gt_intervals.bed", "w") as output_bed:
+#     for interval in amplicon_intervals:
+#         interval_start=min([f[1] for f in interval["snps"]])
+#         interval_end=max([f[1] for f in interval["snps"]])
+#         interval_len=interval_end-interval_start
+#         chr=interval["snps"][0][0]
+#         gts="_".join(interval["genotypes"])
+#         output_bed.write('\t'.join([chr, str(interval_start),str(interval_end),gts])+"\n")
 
 #### END optimise the selection of SNPs ####
 

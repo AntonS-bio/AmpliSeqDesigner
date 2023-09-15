@@ -48,7 +48,7 @@ class GenotypeSnpIdentifier:
         self.file_validator=ValidateFiles()
         self.master_vcf=pd.DataFrame()
         if self.debug:
-            self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:500]
+            self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ]
         else:
             self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ]
 
@@ -88,7 +88,7 @@ class GenotypeSnpIdentifier:
 
         genotype_bifurcating_snps: Genotypes=self.hierarchy_utils.find_defining_snps(vcfs)
 
-        return Genotypes()
+        return genotype_bifurcating_snps
 
 
 

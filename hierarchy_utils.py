@@ -71,14 +71,11 @@ class HierarchyUtilities:
                 gt_snp.sensitivity=gt_snp_count/len(gt_samples)
                 gt_snp.specificity=1-non_gt_snps[gt_snp]/len(non_gt_samples)
                 gt_snp.passes_filters = gt_snp.sensitivity>self.specificity_limit and gt_snp.specificity>self.sensitivity_limit
+                gt_snp.is_genotype_snp=gt_snp.passes_filters
             genotype.defining_snps=[gt for  gt in gt_snps.keys() if gt.passes_filters]
             genotypes.genotypes.append(genotype)
             print(len(genotype.defining_snps))
-
-        print("a")
-
-
-
+        return genotypes
 
     # def find_defining_snps(self, snp_data: pd.DataFrame) -> Genotypes:
     #     self._column_to_gt: List[str]=[mu.meta_data.loc[nc.get_sample(f), mu.genotype_column] for f in snp_data.columns]
