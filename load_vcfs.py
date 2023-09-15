@@ -1,9 +1,9 @@
 import pandas as pd
 from collections import Counter
 import warnings
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Set
 import name_converters
-from numpy import intersect1d
+from data_classes import SNP, Sample
 import metadata_utils
 ## Consider replacing some of this with GATKs VariantsToTable
 
@@ -11,7 +11,59 @@ import metadata_utils
 class VCFutilities():
 
     def __init__(self) -> None:
+        self._repeat_coordinates=set()
         pass
+
+    def vcf_to_snps(self, filename: str, existing_snps:Dict[SNP, SNP], sample: Sample):
+        #### read the VCF file until #CHROM is reached
+        #### the preceeding lines are header
+        vcf_file_type="Unknown"
+        with open(filename) as vcf_file:
+            for i, line in enumerate(vcf_file):
+                if line[0:6]=="#CHROM":
+                    header_columns=line.strip().split("\t")
+                    if len(header_columns)==10:
+                        vcf_file_type="single_sample"
+                    elif len(header_columns)>10:
+                        vcf_file_type="multi_sample"
+                    else:
+                        raise ValueError(f'VCF file {filename} has fewer than 10 columns which is minimum required')
+
+                    break
+
+        duplicate_positions=[]
+        if vcf_file_type=="single_sample":
+            vcf_datatypes={"CHROM":"string","POS":int, "REF": "string", "ALT": "string", "FORMAT": "string"}
+            with open(filename) as vcf_file_handle:
+                for line in vcf_file_handle:
+                    if line[0]=="#" or line=="\n":
+                        continue
+                    chrom, pos, id, ref, alt, qual, filter, info, format, values=line.strip().split("\t")
+                    pos=int(pos)-1  #the rest of the code is 0 indexed like BED and BAM, but VCF coordinates are 1-indexed
+                    if (chrom, pos) in self.repeat_coordinates:
+                        continue
+                    if alt.find(",")>-1:
+                        #multiploid line, skip with a warning
+                        duplicate_positions.append((chrom, pos))
+                        continue
+                    gt_index=format.split(":").index("GT")
+                    if gt_index==-1:
+                        raise ValueError(f'VCF file {filename} does not have genotype code [GT] in SAMPLE colum at {chrom} {str(pos-1)}')
+
+                    allele = ref if values.split(",")[gt_index].split(":")[0]=="0" else alt
+                    snp=SNP(ref_contig_id=chrom, ref_base=ref, alt_base=allele, position=pos)
+                    if snp not in existing_snps:
+                        existing_snps[snp]=snp
+                        sample.snps.append(snp)
+                    else:
+                        sample.snps.append( existing_snps[snp] )
+
+
+            if len(duplicate_positions)>0:
+                warnings.warn(f'VCF file {filename} has {len(duplicate_positions)} duplicated positions')
+
+        else:
+            raise ValueError(f'The vcf type {vcf_file_type} is not currently supported')
 
     def load_file(self, filename: str) -> pd.DataFrame:
         #### read the VCF file until #CHROM is reached
@@ -34,7 +86,10 @@ class VCFutilities():
 
         if vcf_file_type=="single_sample":
             vcf_datatypes={"CHROM":"string","POS":int, "REF": "string", "ALT": "string", "FORMAT": "string"}
-            vcf_data=pd.read_csv(filename, sep="\t", index_col=[0,1], header=0, usecols=[0,1,4,5,8,9],  dtype=vcf_datatypes, skiprows=header_rows)
+            vcf_data=pd.read_csv(filename, sep="\t", header=0, usecols=[0,1,4,5,8,9],  dtype=vcf_datatypes, skiprows=header_rows)
+            vcf_data["POS"]=vcf_data["POS"]-1 #the rest of the code is 0 indexed like BED and BAM, but VCF coordinates are 1-indexed
+            new_index=pd.MultiIndex.from_frame(vcf_data[ ["#CHROM","POS"] ])
+            vcf_data.set_index(new_index, inplace=True)
             #check for duplicate combinations of contig+position i.e. indices
             #the tool is meant for bacteria, so non-haploid calls are a problem
             self._has_duplicate_positions(vcf_data, filename)
@@ -66,14 +121,26 @@ class VCFutilities():
         data.loc[~no_calls_mask,sample_column]=data.loc[~no_calls_mask,"ALT"] #this only works for single sample VCF of haploids
         ##### !!!!! This needs further work. 
 
-    def remove_repeat_regions(self, vcf_data, bed_file) -> None:
-        regions_to_exclude: List[ Tuple[str,int] ]=[]
+    # def remove_repeat_regions(self, vcf_data, bed_file) -> None:
+    #     regions_to_exclude: List[ Tuple[str,int] ]=[]
+    #     with open(bed_file) as bed_data:
+    #         for line in bed_data:
+    #             values=line.strip().split("\t")
+    #             regions_to_exclude=regions_to_exclude+[(values[0],f) for f in range(int(values[1]), int(values[2]))]
+    #     vcf_data.drop( [f for f in regions_to_exclude if f in vcf_data.index] , axis="index", inplace=True )
+
+    def load_repeat_regions(self, bed_file: str):
+        self._repeat_coordinates: Set[ Tuple[str, int] ] =set()
         with open(bed_file) as bed_data:
             for line in bed_data:
                 values=line.strip().split("\t")
-                regions_to_exclude=regions_to_exclude+[(values[0],f) for f in range(int(values[1]), int(values[2]))]
-        vcf_data.drop( [f for f in regions_to_exclude if f in vcf_data.index] , axis="index", inplace=True )
+                self._repeat_coordinates.update( [(values[0],f) for f in range(int(values[1]), int(values[2]))] )
+
     
+    @property
+    def repeat_coordinates(self) -> Set[ Tuple[str, int] ]:
+        return self._repeat_coordinates
+
     def _has_duplicate_positions(self, data: pd.DataFrame, filename: str) -> bool:
         if Counter(data.index.duplicated())[True]!=0:
             duplicate_indices=data.index[data.index.duplicated()]

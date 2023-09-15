@@ -13,8 +13,6 @@ from tqdm import tqdm
 
 class MsaGenerator:
     use_sub_dirs=False
-    max_length_diff=10
-    min_identity=70
     cpu_threads=8
 
     def __init__(self, temp_blast_db_dir: str) -> None:
@@ -31,7 +29,9 @@ class MsaGenerator:
         else:
             self.file_to_search = [dir_to_search+"/"+f for f in listdir(dir_to_search) if isfile(join(dir_to_search, f)) and (splitext(f)[-1]==".fasta" or splitext(f)[-1]==".fna")]
 
-    def generate_msa(self, amplicons:List[Amplicon], output_dir: str, genomes_dir:str) -> Dict[str, pd.DataFrame]:
+    def generate_msa(self, amplicons:List[Amplicon], output_dir: str, genomes_dir:str, max_blast_length_diff: int,  min_blast_identity:int) -> Dict[str, pd.DataFrame]:
+        self.max_blast_length_diff=max_blast_length_diff
+        self.min_blast_identity=min_blast_identity
         self.output_dir=output_dir
         if not exists(self.output_dir):
             mkdir(self.output_dir)
@@ -88,14 +88,14 @@ class MsaGenerator:
         amplicon_len={}
         for amplicon in target_amplicons:
             amplicon_len[amplicon.id]=len(amplicon.seq)
-            amplicon_len_delta[amplicon.id]=int(len(amplicon.seq) * (self.max_length_diff/100))
+            amplicon_len_delta[amplicon.id]=int(len(amplicon.seq) * (self.max_blast_length_diff/100))
             valid_amplicon_hits[amplicon.id]=[]
 
         for result in blast_resuls:
             #check lenght and identity
             if result.q_hit_len >= (amplicon_len[result.sseqid] - amplicon_len_delta[result.sseqid]) and \
                 result.q_hit_len <= (amplicon_len[result.sseqid] + amplicon_len_delta[result.sseqid]) and \
-                result.pident >= self.min_identity:
+                result.pident >= self.min_blast_identity:
                 valid_amplicon_hits[result.sseqid].append(result)
                
         del blast_resuls

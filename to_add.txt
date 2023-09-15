@@ -3,3 +3,5 @@
 ### Allow to have genotypes inferred from the metadata column. I.e. instead of specifying ST11, ST15, etc, just take each ST to be a distinct genotype
 ### Check that VCFs were mapped to the same reference.
 ### Need to add check that species SNPs don't overlap with genotype SNPs
+### for each final amplicon proposed, check that in each VCF this amplicon exists in its entirety. While central segment will, the flanking regions might not.
+### Fix the discrepancy between BED and VCF indices. SAM, GFF, VCF starts at 1, BED, BAM at 0

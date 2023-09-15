@@ -93,7 +93,6 @@ class SNP:
     def passes_filters(self, value: bool):
         self._passes_filters = value
 
-
     @property
     def is_genotype_snp(self) -> bool:
         return self._is_genotype_snp
@@ -128,6 +127,49 @@ class SNP:
             name=name+"/genotype"
 
         file_handle.write(sep.join( [str(f) for f in [self._ref_contig_id, self.position, self.position+1, name] ] )+"\n")
+
+    def __eq__(self, other) -> bool:
+        return self.coordinate==other.coordinate and self.alt_base==other.alt_base
+
+    def __hash__(self):
+        return hash( (self.ref_contig_id, self.position, self.alt_base) )
+
+class Sample:
+    """Represents a VCF sample and contains SNPs associated with it
+
+    SNPs have to be loaded separately to avoid creating multitude of objects
+    """
+    def __init__(self, name: str, vcf_file: str) -> None:
+        self._name=name
+        self._snps=[]
+        self._vcf_file=vcf_file
+        self._uuid=str(uuid.uuid4())
+        self._genotype=""
+
+    
+    @property
+    def genotype(self) -> str:
+        return self._genotype
+
+    @genotype.setter
+    def genotype(self, value: str):
+        self._genotype = value
+
+    @property
+    def vcf_file(self) -> List[SNP]:
+        return self._vcf_file
+
+    @property
+    def snps(self) -> List[SNP]:
+        return self._snps
+
+    @property
+    def name(self) -> str:
+        return self._name
+    
+    @property
+    def id(self) -> str:
+        return self._uuid
 
 class Amplicon:
     def __init__(self, name: str, seq: str) -> None:
@@ -320,7 +362,6 @@ class FlankingAmplicon(Amplicon):
             return (max(self.parent.ref_start-self.max_len,0),self.parent.ref_start)
         else:
             return (self.parent.ref_end , min(self.parent.ref_end+self.max_len,len(record.seq)))
-
 
 class Genotype:
 

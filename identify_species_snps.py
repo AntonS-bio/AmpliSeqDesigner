@@ -18,12 +18,14 @@ class IdentifySpeciesSnps:
     def _get_bifurcating_snps(self, amplicons: List[Amplicon]) -> List[SNP]:
         msa_generator=MsaGenerator(temp_blast_db_dir=self.temp_blast_db_dir)
 
-        msa_dfs: Dict[str, pd.DataFrame]=msa_generator.generate_msa(amplicons, output_dir=self.msa_dir, genomes_dir=self.negative_genomes_dir)
+        msa_dfs: Dict[str, pd.DataFrame]=msa_generator.generate_msa(amplicons, output_dir=self.msa_dir, genomes_dir=self.negative_genomes_dir, 
+                                                                        max_blast_length_diff=self.max_blast_length_diff,
+                                                                        min_blast_identity=self.min_blast_identity)
 
         segregating_snps:List[SNP]=[]
-        #### To Continue from there -> This needs to produces list of SNPs
+
         for amplicon_id, msa_df in msa_dfs.items():
-            current_amplicon=[f for f in amplicons if f.id==amplicon_id][0] 
+            current_amplicon=[f for f in amplicons if f.id==amplicon_id][0]
             ampicon_msa_seq: List[str]=[f for f in msa_df.loc[amplicon_id]]
             msa_to_amplicon_coord: Dict[int, int] =self._map_msa_to_ref_coordinates(amplicon=current_amplicon, msa_seq=ampicon_msa_seq )
 
@@ -64,32 +66,34 @@ class IdentifySpeciesSnps:
         return msa_to_amplicon_position
 
 
-    # def identify_insequence_snps(self):
-    #     """Identifies SNPs within amplicons that distinguish the amplicon from other 
-    #     genotypes. 
-    #     """        
-    #     amplicons: List[Amplicon]=[] 
-    #     with open(f'{self.amplicons_bed}') as input_bed_file: #don't keep the file open, hence why load it to memory
-    #         for line in input_bed_file:
-    #             bed_line_values = line.strip().split("\t")
-    #             ampl_chr, ampl_start, ampl_end=bed_line_values[0:3]
-    #             ampl_start=int(ampl_start)
-    #             ampl_end=int(ampl_end)
-    #             amplicon_id='_'.join( [str(f) for f in bed_line_values[0:4] ] )
-    #             for record in SeqIO.parse(self.ref_fasta,"fasta"):
-    #                 if record.id==ampl_chr:
-    #                     new_amplicon=Amplicon(amplicon_id, str(record.seq[ampl_start:ampl_end]))
-    #                     new_amplicon.middle=True
-    #                     amplicons.append( new_amplicon )
-    #                     continue
+    def identify_insequence_snps(self,  max_blast_length_diff: int,  min_blast_identity:int) -> List[Amplicon]:
+        """Identifies SNPs within amplicons that distinguish the amplicon from other 
+        genotypes. 
+        """        
+        self.max_blast_length_diff=max_blast_length_diff
+        self.min_blast_identity=min_blast_identity
+        amplicons: List[Amplicon]=[]
+        with open(f'{self.amplicons_bed}') as input_bed_file: #don't keep the file open, hence why load it to memory
+            for line in input_bed_file:
+                new_amplicon=Amplicon.from_bed_line(line,self.ref_fasta)
+                amplicons.append(new_amplicon)
         
-    #     self._get_bifurcating_snps(amplicons)
+        result:List[SNP] = self._get_bifurcating_snps(amplicons)
 
-    def identify_flanking_snps(self, max_seq_len: int) -> List[FlankingAmplicon]:
+        for snp in result:
+            for amplicon in amplicons:
+                if amplicon.snp_in_amplicon(snp):
+                    amplicon.snps.append(snp)
+
+        return amplicons
+
+    def identify_flanking_snps(self, max_seq_len: int, max_blast_length_diff: int,  min_blast_identity:int) -> List[FlankingAmplicon]:
         """Identifies SNPs within left and right amplicon flanking sequences
         The flanking sequences are max_len-amplicon_len which means that total length
         of flanking plus amplicon sequences may be longer than max_seq_len
         """        
+        self.max_blast_length_diff=max_blast_length_diff
+        self.min_blast_identity=min_blast_identity
         amplicons: List[FlankingAmplicon]=[]
         with open(f'{self.amplicons_bed}') as input_bed_file: #don't keep the file open, hence why load it to memory
             for line in input_bed_file:

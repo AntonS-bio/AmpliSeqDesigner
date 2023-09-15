@@ -1,15 +1,12 @@
 from inputs_validation import ValidateFiles
-import time 
-from multiprocessing import cpu_count, Pool
 
-#### START Identification of genotype defining SNPS #### 
 from os import listdir
 import metadata_utils as metadata_utils
 from load_vcfs import VCFutilities
 from hierarchy_utils import HierarchyUtilities
 import pandas as pd
 from typing import Dict, List
-from data_classes import Genotype, Genotypes
+from data_classes import Genotype, Genotypes, Sample, SNP
 from tqdm import tqdm
 
 class GenotypeSnpIdentifier:
@@ -51,15 +48,16 @@ class GenotypeSnpIdentifier:
         self.file_validator=ValidateFiles()
         self.master_vcf=pd.DataFrame()
         if self.debug:
-            self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:2000]
+            self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ][0:500]
         else:
             self.vcf_files: List[str]=[f'{vcf_dir}{f}' for f in listdir(vcf_dir) ]
 
         if kwargs.get("repeat_regions_file","")!="":
             self.repeat_regions_file=kwargs.get("repeat_regions_file","")
             self.file_validator.validate_bed(self.repeat_regions_file)
-            self.file_validator.contigs_in_vcf(self.repeat_regions_file,self.vcf_files[0]) ###!!!! Why 0?
+            self.file_validator.contigs_in_vcf(self.repeat_regions_file,self.vcf_files[0]) ###Don't check every VCF, only the first one. Unlikely to be problematic
 
+        self.vcf_utils.load_repeat_regions(self.repeat_regions_file)
         metadata_utils.load_metadata(meta_data_file, kwargs.get("metadata_delimiter",",") )
         samples_without_metadata=metadata_utils.samples_in_metadata(self.vcf_files)
         for sample in samples_without_metadata:
@@ -72,46 +70,64 @@ class GenotypeSnpIdentifier:
         self.hierarchy_utils=HierarchyUtilities( sensitivity_limit=senstivity/100, specificity_limit=specificity/100)
         self.hierarchy_utils.load_hierarchy(hierarchy_file)
 
+
     def identify_snps(self) -> Genotypes:
         """Scans VCF files for SNPs that segregate genotypes of interest from the rest.
 
         """
-        vcfs: List[pd.DataFrame]=[]
+        vcfs: List[Sample]=[]
         print("Loading VCFs")
+        all_snps: Dict[SNP, SNP]={} #this is needed for speed. List lookup is slow and sets by nature don't support indexing
         with tqdm(total=len(self.vcf_files)) as progress_meter:
             for i, vcf in enumerate(self.vcf_files):
-                vcfs.append( self.vcf_utils.load_file(vcf ) )
+                vcf_obj=Sample(vcf.replace(".vcf",""), vcf)
+                vcf_obj.genotype=metadata_utils.get_metavalue(vcf, metadata_utils.genotype_column)
+                self.vcf_utils.vcf_to_snps(vcf, all_snps, vcf_obj)
+                vcfs.append( vcf_obj )
                 progress_meter.update(1)
 
-        ##get total indices from all vcfs to preallocate dataframe, this is much faster than merge and the loading of the vcfs can be parallelised
-        vcf_columns=[""]*len(vcfs)
-        with tqdm(total=len(vcfs)) as progress_meter:
-            for i, vcf_data in enumerate(vcfs):
-                vcf_columns[i]=vcf_data.columns[-1]
-                progress_meter.update(1)
-        all_vcf_indices=sorted(set([k for f in vcfs for k in f.index]))
-        master_vcf=pd.DataFrame(index=all_vcf_indices, columns=vcf_columns)
+        genotype_bifurcating_snps: Genotypes=self.hierarchy_utils.find_defining_snps(vcfs)
 
-        with tqdm(total=len(vcfs)) as progress_meter:
-            for vcf_data in vcfs:
-                master_vcf.loc[vcf_data.index, vcf_data.columns[-1]]=vcf_data[vcf_data.columns[-1]]
-                progress_meter.update(1)
+        return Genotypes()
 
-        del vcfs
 
-        master_vcf.fillna("REF", inplace=True)
-        #sys.exit()
 
-        if self.repeat_regions_file!="":
-            self.vcf_utils.remove_repeat_regions(master_vcf,self.repeat_regions_file)
 
-        genotype_bifurcating_snps: Genotypes=self.hierarchy_utils.find_defining_snps(master_vcf)
 
-        #### !!!! For testing only
-        print('dense : {:0.0f} bytes'.format(master_vcf.memory_usage().sum() / 1e3) )
-        sdf = master_vcf.astype(pd.SparseDtype("str", "REF"))
-        print('sparse: {:0.0f} bytes'.format(sdf.memory_usage().sum() / 1e3) )
-        #master_vcf=master_vcf.astype(pd.SparseDtype("str", "REF"))
-        #print(Counter([meta_data.get_metavalue(f,"Final_genotype") for f in samples]))
+    # def identify_snps(self) -> Genotypes:
+    #     """Scans VCF files for SNPs that segregate genotypes of interest from the rest.
 
-        return genotype_bifurcating_snps
+    #     """
+    #     vcfs: List[pd.DataFrame]=[]
+    #     print("Loading VCFs")
+    #     with tqdm(total=len(self.vcf_files)) as progress_meter:
+    #         for i, vcf in enumerate(self.vcf_files):
+    #             vcfs.append( self.vcf_utils.load_file(vcf ) )
+    #             progress_meter.update(1)
+
+    #     ##get total indices from all vcfs to preallocate dataframe, this is much faster than merge and the loading of the vcfs can be parallelised
+    #     vcf_columns=[""]*len(vcfs)
+    #     with tqdm(total=len(vcfs)) as progress_meter:
+    #         for i, vcf_data in enumerate(vcfs):
+    #             vcf_columns[i]=vcf_data.columns[-1]
+    #             progress_meter.update(1)
+    #     all_vcf_indices=sorted(set([k for f in vcfs for k in f.index]))
+    #     master_vcf=pd.DataFrame(index=all_vcf_indices, columns=vcf_columns)
+
+    #     print("Merging VCFs")
+    #     with tqdm(total=len(vcfs)) as progress_meter:
+    #         for vcf_data in vcfs:
+    #             master_vcf.loc[vcf_data.index, vcf_data.columns[-1]]=vcf_data[vcf_data.columns[-1]]
+    #             progress_meter.update(1)
+
+    #     del vcfs
+
+    #     master_vcf.fillna("REF", inplace=True)
+    #     #sys.exit()
+
+    #     if self.repeat_regions_file!="":
+    #         self.vcf_utils.remove_repeat_regions(master_vcf,self.repeat_regions_file)
+
+    #     genotype_bifurcating_snps: Genotypes=self.hierarchy_utils.find_defining_snps(master_vcf)
+
+    #     return genotype_bifurcating_snps

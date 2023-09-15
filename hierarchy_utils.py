@@ -7,7 +7,7 @@ from collections import Counter
 from multiprocessing import cpu_count, Pool
 import numpy as np
 import warnings
-from data_classes import Genotype, Genotypes, SNP
+from data_classes import Genotype, Genotypes, SNP, Sample
 from tqdm import tqdm
 
 class HierarchyUtilities:
@@ -48,7 +48,7 @@ class HierarchyUtilities:
         for target_col_alleles, non_target_col_alleles, position in zip([Counter(f).most_common()[0] for f in self._snp_data[ target_columns ].values],
                                                                   [Counter(f) for f in self._snp_data[ non_target_columns ].values],
                                                                   self._snp_data.index):
-            snp=SNP(ref_contig_id=position[0], position=position[1], 
+            snp=SNP(ref_contig_id=position[0], position=position[1],
                     ref_base="REF", alt_base=target_col_alleles[0], )
             total_target_in_non_target=0 if target_col_alleles[0] not in non_target_col_alleles else non_target_col_alleles[target_col_alleles[0]]
             snp.sensitivity=target_col_alleles[1]/total_target_samples
@@ -58,32 +58,53 @@ class HierarchyUtilities:
                 target_gt.defining_snps.append(snp)
 
         return target_gt
-    
-    def find_defining_snps(self, snp_data: pd.DataFrame) -> Genotypes:
-        self._column_to_gt: List[str]=[mu.meta_data.loc[nc.get_sample(f), mu.genotype_column] for f in snp_data.columns]
-        self._snp_data=snp_data
 
-        if __name__ == 'hierarchy_utils':
-            present_gts: Set[Genotype]=set()
-            for gt_name, genotype in self.genotype_hierarchy.items():
-                if gt_name not in self._column_to_gt:
-                    if len([ f for f in  genotype.subgenotypes if f in self._column_to_gt ]):
-                        warnings.warn(f'Genotype {gt_name} is not present in samples, but some of its subgenotypes are')
-                        present_gts.add(genotype)
-                    else:
-                        warnings.warn(f'Neither genotype {gt_name}, nor any of its subgenotypes are present among samples')
-                else:
-                    present_gts.add(genotype)
+
+    def find_defining_snps(self, samples: List[Sample]) -> Genotypes:
+        genotypes=Genotypes()
+        for gt_name, genotype in self.genotype_hierarchy.items():
+            gt_samples=[f for f in samples if f.genotype in genotype.subgenotypes]
+            non_gt_samples=[f for f in samples if f.genotype not in genotype.subgenotypes]
+            gt_snps=Counter([snp for sample in gt_samples for snp in sample.snps])
+            non_gt_snps=Counter([snp for sample in non_gt_samples for snp in sample.snps])
+            for gt_snp, gt_snp_count in gt_snps.items():
+                gt_snp.sensitivity=gt_snp_count/len(gt_samples)
+                gt_snp.specificity=1-non_gt_snps[gt_snp]/len(non_gt_samples)
+                gt_snp.passes_filters = gt_snp.sensitivity>self.specificity_limit and gt_snp.specificity>self.sensitivity_limit
+            genotype.defining_snps=[gt for  gt in gt_snps.keys() if gt.passes_filters]
+            genotypes.genotypes.append(genotype)
+            print(len(genotype.defining_snps))
+
+        print("a")
+
+
+
+
+    # def find_defining_snps(self, snp_data: pd.DataFrame) -> Genotypes:
+    #     self._column_to_gt: List[str]=[mu.meta_data.loc[nc.get_sample(f), mu.genotype_column] for f in snp_data.columns]
+    #     self._snp_data=snp_data
+
+    #     if __name__ == 'hierarchy_utils':
+    #         present_gts: Set[Genotype]=set()
+    #         for gt_name, genotype in self.genotype_hierarchy.items():
+    #             if gt_name not in self._column_to_gt:
+    #                 if len([ f for f in  genotype.subgenotypes if f in self._column_to_gt ]):
+    #                     warnings.warn(f'Genotype {gt_name} is not present in samples, but some of its subgenotypes are')
+    #                     present_gts.add(genotype)
+    #                 else:
+    #                     warnings.warn(f'Neither genotype {gt_name}, nor any of its subgenotypes are present among samples')
+    #             else:
+    #                 present_gts.add(genotype)
         
-            print("Identifying genotype SNPs")
-            pool = Pool(processes= min(  max(cpu_count()-1,1) , len(present_gts) ) )
-            results = list(tqdm( pool.imap(func=self._count_gt_allele_freq, iterable=list(present_gts)), total=len(present_gts) ))
-            return Genotypes(genotypes=results)
-            #pool = Pool(processes= 1 )
-            results=pool.map( self._count_gt_allele_freq, list(present_gts) ) 
-            pool.close()
-            pool.join()
-            return results
+    #         print("Identifying genotype SNPs")
+    #         pool = Pool(processes= min(  max(cpu_count()-1,1) , len(present_gts) ) )
+    #         results = list(tqdm( pool.imap(func=self._count_gt_allele_freq, iterable=list(present_gts)), total=len(present_gts) ))
+    #         return Genotypes(genotypes=results)
+    #         #pool = Pool(processes= 1 )
+    #         results=pool.map( self._count_gt_allele_freq, list(present_gts) ) 
+    #         pool.close()
+    #         pool.join()
+    #         return results
 
 
 
