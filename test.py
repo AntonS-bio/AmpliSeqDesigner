@@ -22,34 +22,34 @@ from data_classes import Genotype, Genotypes, SNP, FlankingAmplicon, Amplicon
 #### END Input validation tests ####
 
 #### START Identify genotype defining SNPs ####
-from identify_genotype_snps import GenotypeSnpIdentifier
-from typing import List
-import name_converters
-import pandas as pd
-from collections import Counter
-name_converters.name_stubs.add(".sorted")
+# from identify_genotype_snps import GenotypeSnpIdentifier
+# from typing import List
+# import name_converters
+# import pandas as pd
+# from collections import Counter
+# name_converters.name_stubs.add(".sorted")
 
-snp_identifier=GenotypeSnpIdentifier(vcf_dir="/home/ubuntu/converted_vcfs/",
-                                     hierarchy_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/extra_genotypes_hierarchy.tsv",
-                                     meta_data_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/TGC_data.csv",
-                                     genotype_column="Final_genotype",
-                                     repeat_regions_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/ref_repeats.bed",
-                                     meta_deliminter=",",
-                                     specificity=99,
-                                     senstivity=99)
-genotypes: Genotypes = snp_identifier.identify_snps()
+# snp_identifier=GenotypeSnpIdentifier(vcf_dir="/home/ubuntu/converted_vcfs/",
+#                                      hierarchy_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/extra_genotypes_hierarchy.tsv",
+#                                      meta_data_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/TGC_data.csv",
+#                                      genotype_column="Final_genotype",
+#                                      repeat_regions_file="/home/ubuntu/HandyAmpliconTool/test_data/inputs/ref_repeats.bed",
+#                                      meta_deliminter=",",
+#                                      specificity=99,
+#                                      senstivity=99)
+# genotypes: Genotypes = snp_identifier.identify_snps()
 
-genotypes.genotypes_to_snp_matrix().to_csv("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_v2.tsv", sep="\t", index=False)
+# genotypes.genotypes_to_snp_matrix().to_csv("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_v2.tsv", sep="\t", index=False)
 
-with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/genotype_snps.tsv", "w") as snps_file:
-    for genotype in genotypes.genotypes:
-        for snp in genotype.defining_snps:
-            if snp.passes_filters:
-                fourth_col=f'{snp.ref_base}/{snp.alt_base}/{genotype.name}/SP:{snp.specificity:.1f}/SE:{snp.sensitivity:.1f}'
-                snps_file.write("\t".join( [str(f) for f in [snp.ref_contig_id, snp.position, snp.position, fourth_col] ])+"\n")
+# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/genotype_snps.tsv", "w") as snps_file:
+#     for genotype in genotypes.genotypes:
+#         for snp in genotype.defining_snps:
+#             if snp.passes_filters:
+#                 fourth_col=f'SNP:{snp.ref_base}/{snp.alt_base}/GT:{genotype.name}/SP:{snp.specificity:.1f}/SE:{snp.sensitivity:.1f}'
+#                 snps_file.write("\t".join( [str(f) for f in [snp.ref_contig_id, snp.position, snp.position+1, fourth_col] ])+"\n")
 
-with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "wb") as output:
-    pickle.dump(genotypes, output)
+# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "wb") as output:
+#     pickle.dump(genotypes, output)
 
 #### END Identify genotype defining SNPs ####
 
@@ -74,9 +74,9 @@ with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "
 #         gts="_".join(interval["genotypes"])
 #         output_bed.write('\t'.join([chr, str(interval_start),str(interval_end),gts])+"\n")
 
-#### END optimise the selection of SNPs ####
+### END optimise the selection of SNPs ####
 
-#### START tviD/parC species SNPs section ####
+### START tviD/parC species SNPs section ####
 # from identify_species_snps import IdentifySpeciesSnps
 # snp_identifier=IdentifySpeciesSnps(ref_fasta="/home/ubuntu/HandyAmpliconTool/test_data/inputs/GCA_000195995.1_for_VCFs.fasta",
 #                                    msa_dir="/home/ubuntu/HandyAmpliconTool/test_data/msa/",
@@ -103,16 +103,89 @@ with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "
 #                                    temp_blast_db_dir="/home/ubuntu/HandyAmpliconTool/test_data/tempBlastDB/",
 #                                    amplicons_bed='/home/ubuntu/HandyAmpliconTool/test_data/outputs/multi_gt_intervals.bed')
 
-# flanking_amplicons: List[ FlankingAmplicon ]=snp_identifier.identify_flanking_snps(max_seq_len=1000, max_blast_length_diff=10, min_blast_identity=70)
+# flanking_amplicons: Genotype=snp_identifier.identify_flanking_snps(max_seq_len=1000, max_blast_length_diff=90, min_blast_identity=60)
 
 # with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_species_amplicons.pkl", "wb") as output:
 #     pickle.dump(flanking_amplicons, output)
 
-# snps_file=open('/home/ubuntu/HandyAmpliconTool/test_data/outputs/species_snps.bed',"w")
-# for snp in species_snps:
-#     snp.to_file(snps_file, sep="\t")
-# snps_file.close()
+# sys.exit()
 #### END MSA generation section ####
+
+
+#### START write VCF ####
+
+with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_species_amplicons.pkl", "rb") as pickled_file:
+    species: Genotype = pickle.load(pickled_file)
+
+with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "rb") as pickled_file:
+    genotypes: Genotypes = pickle.load(pickled_file)
+
+genotypes.genotypes.append(species)
+
+with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/snps.vcf", "w") as vcf_output_file:
+    #write the vcf header
+    vcf_output_file.write('##fileformat=VCFv4.2'+"\n")
+    vcf_output_file.write('##FILTER=<ID=PASS,Description="All filters passed">'+"\n")
+    vcf_output_file.write('##ALT=<ID=*,Description="Represents allele(s) other than observed.">'+"\n")
+
+    for ref_contig in set([snp.ref_contig_id for genotype in genotypes.genotypes for snp in genotype.defining_snps]):
+        contig_max_position=max([snp.position for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.ref_contig_id == ref_contig])
+        vcf_output_file.write(f'##contig=<ID={ref_contig},length={str(contig_max_position)}>'+"\n")
+    header_line="#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t"
+    gt_columns={}
+    for i, gt in enumerate(genotypes.genotypes):
+        header_line=header_line+gt.name+"\t"
+        gt_columns[gt.name]=i
+    header_line=header_line+"NonTargetSerovar\n"
+    gt_columns["NonTargetSerovar"]=len(gt_columns)
+    vcf_output_file.write(header_line)
+
+    coordinates=sorted(set([coordinate for genotype in genotypes.genotypes for coordinate in genotype.defining_snp_coordinates]))
+    for contig_id, position in coordinates:
+        snps_at_coordinates=[(genotype, snp) for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.position==position and snp.ref_contig_id==contig_id]
+        alt_alleles=[base for base in [snp[1].alt_base for snp in snps_at_coordinates] ][0]
+        if len(alt_alleles)>1:
+            print(f'Excess alleles at pos: {str(position)} contig {contig_id}')
+            continue
+        alt_str=f'{alt_alleles}'
+        for genotype, snp in snps_at_coordinates:
+            #check that snp is in multi genotype region
+            if True not in set([f.snp_in_amplicon(snp) for f in species.amplicons]):
+                continue
+
+            if snp.passes_filters:
+                if genotype.name!="species":
+                    if genotype.get_genotype_allele(snp)==snp.alt_base:
+                        suffix=[0]*len(gt_columns)
+                        suffix[gt_columns[genotype.name]]=1 #0 is REF allele
+                    else:
+                        suffix=[ 1 ]*len(gt_columns) #set 
+                        suffix[gt_columns[genotype.name]]=0
+                    vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
+                    suffix[gt_columns["species"]]=0
+                    suffix[gt_columns["NonTargetSerovar"]]="."
+                else:
+                    vcf_snp_id="_".join( ["Serovar", snp.ref_contig_id ,str(snp.position+1), snp.alt_base] )
+                    suffix=[0]*len(gt_columns)
+                    suffix[gt_columns["NonTargetSerovar"]]=1
+                    alt_str=snp.alt_base
+                vcf_output_file.write("\t".join([str(f) for f in [snp.ref_contig_id,
+                                                                    snp.position+1,
+                                                                    vcf_snp_id,
+                                                                    snp.ref_base,
+                                                                    alt_str,
+                                                                    ".",
+                                                                    "PASS",
+                                                                    ".",
+                                                                    "GT",
+                                                                    ]+suffix ]   ) +"\n" )
+
+# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_gt_snps.pkl", "rb") as pickled_file:
+#     
+
+
+#### END write VCF ####
+
 
 #### START list amplicons with species defining SNPs on flanks section ####
 

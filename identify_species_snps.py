@@ -3,7 +3,7 @@ import pandas as pd
 from collections import Counter
 from Bio import SeqIO
 from typing import List, Dict, Tuple
-from data_classes import Amplicon, SNP, FlankingAmplicon
+from data_classes import Amplicon, SNP, FlankingAmplicon, Genotype
 
 
 class IdentifySpeciesSnps:
@@ -15,17 +15,18 @@ class IdentifySpeciesSnps:
         self.msa_dir=msa_dir
         self.temp_blast_db_dir=temp_blast_db_dir
 
-    def _get_bifurcating_snps(self, amplicons: List[Amplicon]) -> List[SNP]:
+    #def _get_bifurcating_snps(self, amplicons: List[Amplicon]) -> List[SNP]:
+    def _get_bifurcating_snps(self, genotype: Genotype) -> Genotype:
         msa_generator=MsaGenerator(temp_blast_db_dir=self.temp_blast_db_dir)
-
-        msa_dfs: Dict[str, pd.DataFrame]=msa_generator.generate_msa(amplicons, output_dir=self.msa_dir, genomes_dir=self.negative_genomes_dir, 
+        
+        msa_dfs: Dict[str, pd.DataFrame]=msa_generator.generate_msa(genotype.amplicons, output_dir=self.msa_dir, genomes_dir=self.negative_genomes_dir, 
                                                                         max_blast_length_diff=self.max_blast_length_diff,
                                                                         min_blast_identity=self.min_blast_identity)
 
-        segregating_snps:List[SNP]=[]
+        #segregating_snps:List[SNP]=[]
 
         for amplicon_id, msa_df in msa_dfs.items():
-            current_amplicon=[f for f in amplicons if f.id==amplicon_id][0]
+            current_amplicon=[f for f in genotype.amplicons if f.id==amplicon_id][0]
             ampicon_msa_seq: List[str]=[f for f in msa_df.loc[amplicon_id]]
             msa_to_amplicon_coord: Dict[int, int] =self._map_msa_to_ref_coordinates(amplicon=current_amplicon, msa_seq=ampicon_msa_seq )
 
@@ -38,14 +39,17 @@ class IdentifySpeciesSnps:
                     target_nucleotide=msa_df.loc[amplicon_id,col]
                     bases_at_position=Counter(msa_df[col])
                     if bases_at_position[target_nucleotide]==1:
-                        snp=SNP(ref_contig_id=current_amplicon.ref_contig, ref_base=target_nucleotide,  position=current_amplicon.ref_start+msa_to_amplicon_coord[i])
-                        snp.alt_base=bases_at_position.most_common(1)[0][0] #.most_common() returns list of tuples hence [0][0]
-                        snp.passes_filters=True
-                        snp.specificity=1
-                        snp.sensitivity=1
-                        snp.is_species_snp=True
-                        segregating_snps.append(snp)
-        return segregating_snps
+                        for alt_base, count in bases_at_position.items():
+                            snp=SNP(ref_contig_id=current_amplicon.ref_contig, ref_base=target_nucleotide, alt_base=alt_base,  position=current_amplicon.ref_start+msa_to_amplicon_coord[i])
+                            #snp.alt_base=bases_at_position.most_common(1)[0][0] #.most_common() returns list of tuples hence [0][0]
+                            if snp.alt_base=="-":
+                                snp.alt_base="."
+                            snp.passes_filters=True
+                            snp.specificity=1
+                            snp.sensitivity=1
+                            snp.is_species_snp=True
+                            genotype.add_genotype_allele(snp, snp.ref_base)
+        return genotype
 
     def _map_msa_to_ref_coordinates(self, amplicon:Amplicon, msa_seq:List[str])-> Dict[int, int]:
         """MSA produces a sequence string with gaps so position of nucleotide in the string
@@ -87,28 +91,26 @@ class IdentifySpeciesSnps:
 
         return amplicons
 
-    def identify_flanking_snps(self, max_seq_len: int, max_blast_length_diff: int,  min_blast_identity:int) -> List[FlankingAmplicon]:
+    def identify_flanking_snps(self, max_seq_len: int, max_blast_length_diff: int,  min_blast_identity:int) -> Genotype:
         """Identifies SNPs within left and right amplicon flanking sequences
         The flanking sequences are max_len-amplicon_len which means that total length
         of flanking plus amplicon sequences may be longer than max_seq_len
         """        
         self.max_blast_length_diff=max_blast_length_diff
         self.min_blast_identity=min_blast_identity
-        amplicons: List[FlankingAmplicon]=[]
+        genotype: Genotype=Genotype("species")
+
         with open(f'{self.amplicons_bed}') as input_bed_file: #don't keep the file open, hence why load it to memory
             for line in input_bed_file:
                 new_amplicon=Amplicon.from_bed_line(line,self.ref_fasta)
                 left_flanking=FlankingAmplicon.from_parent_bed_line(self.ref_fasta, True, max_seq_len, new_amplicon)
                 right_flanking=FlankingAmplicon.from_parent_bed_line(self.ref_fasta, False, max_seq_len, new_amplicon)
-                amplicons.append( left_flanking)
-                amplicons.append( right_flanking)
+                genotype.amplicons.append(new_amplicon)
+                genotype.amplicons.append( left_flanking)
+                genotype.amplicons.append( right_flanking)
         
-        result:List[SNP] = self._get_bifurcating_snps(amplicons)
+        result:Genotype = self._get_bifurcating_snps(genotype)
 
-        for snp in result:
-            for amplicon in amplicons:
-                if amplicon.snp_in_amplicon(snp):
-                    amplicon.snps.append(snp)
 
-        return amplicons
+        return result
     

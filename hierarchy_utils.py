@@ -39,25 +39,25 @@ class HierarchyUtilities:
     _genotype_snps: pd.DataFrame
     
    
-    def _count_gt_allele_freq(self, target_gt: Genotype ) -> Genotype:
-        target_columns=[f for f in self._snp_data.columns if mu.meta_data.loc[nc.get_sample(f),mu.genotype_column] in target_gt.subgenotypes]
-        non_target_columns=[f for f in self._snp_data.columns if f not in target_columns]
+    # def _count_gt_allele_freq(self, target_gt: Genotype ) -> Genotype:
+    #     target_columns=[f for f in self._snp_data.columns if mu.meta_data.loc[nc.get_sample(f),mu.genotype_column] in target_gt.subgenotypes]
+    #     non_target_columns=[f for f in self._snp_data.columns if f not in target_columns]
 
-        total_target_samples=len(target_columns)
-        total_non_target_samples=len(non_target_columns)
-        for target_col_alleles, non_target_col_alleles, position in zip([Counter(f).most_common()[0] for f in self._snp_data[ target_columns ].values],
-                                                                  [Counter(f) for f in self._snp_data[ non_target_columns ].values],
-                                                                  self._snp_data.index):
-            snp=SNP(ref_contig_id=position[0], position=position[1],
-                    ref_base="REF", alt_base=target_col_alleles[0], )
-            total_target_in_non_target=0 if target_col_alleles[0] not in non_target_col_alleles else non_target_col_alleles[target_col_alleles[0]]
-            snp.sensitivity=target_col_alleles[1]/total_target_samples
-            snp.specificity=1-total_target_in_non_target/total_non_target_samples
-            snp.passes_filters = snp.sensitivity>self.specificity_limit and snp.specificity>self.sensitivity_limit
-            if snp.passes_filters:
-                target_gt.defining_snps.append(snp)
+    #     total_target_samples=len(target_columns)
+    #     total_non_target_samples=len(non_target_columns)
+    #     for target_col_alleles, non_target_col_alleles, position in zip([Counter(f).most_common()[0] for f in self._snp_data[ target_columns ].values],
+    #                                                               [Counter(f) for f in self._snp_data[ non_target_columns ].values],
+    #                                                               self._snp_data.index):
+    #         snp=SNP(ref_contig_id=position[0], position=position[1],
+    #                 ref_base="REF", alt_base=target_col_alleles[0], )
+    #         total_target_in_non_target=0 if target_col_alleles[0] not in non_target_col_alleles else non_target_col_alleles[target_col_alleles[0]]
+    #         snp.sensitivity=target_col_alleles[1]/total_target_samples
+    #         snp.specificity=1-total_target_in_non_target/total_non_target_samples
+    #         snp.passes_filters = snp.sensitivity>self.specificity_limit and snp.specificity>self.sensitivity_limit
+    #         if snp.passes_filters:
+    #             target_gt.defining_snps.append(snp)
 
-        return target_gt
+    #     return target_gt
 
 
     def find_defining_snps(self, samples: List[Sample]) -> Genotypes:
@@ -67,14 +67,28 @@ class HierarchyUtilities:
             non_gt_samples=[f for f in samples if f.genotype not in genotype.subgenotypes]
             gt_snps=Counter([snp for sample in gt_samples for snp in sample.snps])
             non_gt_snps=Counter([snp for sample in non_gt_samples for snp in sample.snps])
-            for gt_snp, gt_snp_count in gt_snps.items():
-                gt_snp.sensitivity=gt_snp_count/len(gt_samples)
-                gt_snp.specificity=1-non_gt_snps[gt_snp]/len(non_gt_samples)
-                gt_snp.passes_filters = gt_snp.sensitivity>self.specificity_limit and gt_snp.specificity>self.sensitivity_limit
-                gt_snp.is_genotype_snp=gt_snp.passes_filters
-            genotype.defining_snps=[gt for  gt in gt_snps.keys() if gt.passes_filters]
+            for snps_dict, invert_specificity_sensitivity in zip([gt_snps, non_gt_snps], [False, True]):
+                #a genotype can be defined by SNPs not present in it or SNPs present in it
+                #for this reason, SNPs in genotype samples are not sufficient and SNPs not in genotype also have to be checked
+                #this creates potiential double counting, which needs to be checked
+                for gt_snp, gt_snp_count in snps_dict.items():
+                    if invert_specificity_sensitivity:
+                        specificity=1-gt_snp_count/len(gt_samples)
+                        sensitivity=non_gt_snps[gt_snp]/len(non_gt_samples)
+                    else:
+                        sensitivity=gt_snp_count/len(gt_samples)
+                        specificity=1-non_gt_snps[gt_snp]/len(non_gt_samples)
+                    if sensitivity>self.specificity_limit and specificity>self.sensitivity_limit and gt_snp not in genotype.defining_snps:
+                        # gt_snp not in genotype.defining_snps check for redundancy
+                        snp_copy=gt_snp.copy()
+                        snp_copy.sensitivity=sensitivity
+                        snp_copy.specificity=specificity
+                        snp_copy.passes_filters=True
+                        snp_copy.is_genotype_snp=True
+                        genotype.add_genotype_allele(snp_copy, gt_snp.ref_base if invert_specificity_sensitivity else gt_snp.alt_base)
+
             genotypes.genotypes.append(genotype)
-            print(len(genotype.defining_snps))
+            print(f'{genotype.name} has {str(len(genotype.defining_snps))} SNPs')
         return genotypes
 
     # def find_defining_snps(self, snp_data: pd.DataFrame) -> Genotypes:

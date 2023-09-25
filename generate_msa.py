@@ -1,5 +1,5 @@
 #take all fastas in specified directory and check all for specific gene
-from os import listdir, walk, mkdir
+from os import listdir, walk, mkdir, remove
 from os.path import isfile, join, splitext, split, exists
 import subprocess
 from typing import List, Dict, Tuple
@@ -42,21 +42,36 @@ class MsaGenerator:
                 raise ValueError(f'No .fna or .fasta files found in {genomes_dir} or sub-directories.')
             else:
                 raise ValueError(f'No .fna or .fasta files found in {genomes_dir}. Did you mean to include sub-directories?')
-        self.file_to_search=self.file_to_search
+        #self.file_to_search=self.file_to_search
         blast_results_raw=self._run_blast(amplicons, self.file_to_search)
         blast_results=self._process_blast_results(blast_results_raw, amplicons)
 
-        print("Generating MSAs")
-        with tqdm(total=len(blast_results)) as progress_meter:
-            msa_dfs: Dict[str, pd.DataFrame]={}
+
+
+
+        if __name__ == 'generate_msa':
+            print("Generating MSAs")
+            pool = Pool(processes= min(  max(cpu_count()-1,1) , self.cpu_threads ) )
+            aligner_inputs:List=[]
             for amplicon_id, amplicon_results in blast_results.items():
-                progress_meter.update(1)
                 if len(amplicon_results)==0:
                     continue
                 amplicon_seq=[f.seq for f in amplicons if f.id==amplicon_id][0]
-                msa_result=self._align_results(amplicon_results, amplicon_id, amplicon_seq)
-                msa_dfs[amplicon_id]=self._msa_to_dataframe(msa_result)
-        return msa_dfs
+                aligner_inputs.append([amplicon_results,amplicon_id,amplicon_seq])
+
+            msa_results = list(tqdm( pool.imap(func=self._align_results, iterable=aligner_inputs), total=len(aligner_inputs) ))
+            msa_dfs: Dict[str, pd.DataFrame]={}
+            for amplicon_id, amplicon_results in blast_results.items(): #this is a shortcut and a more robust solution is required in longer-term
+                for result in msa_results:
+                    if amplicon_id in result:
+                        msa_dfs[amplicon_id]=self._msa_to_dataframe(result)
+                        break
+
+            return msa_dfs
+
+
+
+
 
     def _run_blast(self, subject_sequences: List[Amplicon], query_files: List[str]) -> List[BlastResult] :
         """Runs blast against a single file at a time using Pool
@@ -101,12 +116,15 @@ class MsaGenerator:
         del blast_resuls
         return valid_amplicon_hits
 
-    def _align_results(self, blast_results: List[BlastResult], amplicon_id: str, amplicon_seq:str):
+    #def _align_results(self, blast_results: List[BlastResult], amplicon_id: str, amplicon_seq:str):
+    def _align_results(self, values:List):
         """Take valid blast results and create a file of unalligned hits
         use MSA tool (here Mafft) to align them
         this might be replaced later, but at the moment this is simpler approach
         """
-        with open(f'{self.temp_blast_db_dir}/unaligned.fasta', "w") as output:
+        blast_results, amplicon_id, amplicon_seq=values
+        fasta_file=f'{self.temp_blast_db_dir}/{amplicon_id}.fasta'
+        with open(fasta_file, "w") as output:
             output.write(">"+amplicon_id+"\n"+amplicon_seq+"\n")
             for result in blast_results:
                 if result.sstart>result.send:
@@ -116,9 +134,9 @@ class MsaGenerator:
                 output.write(f'>{result.qseqid}'+"\n")
                 output.write(str(seq_to_allign)+"\n")
             
-        outcome=subprocess.run(f'mafft --retree 1 {self.temp_blast_db_dir}/unaligned.fasta', \
+        outcome=subprocess.run(f'mafft --retree 1 {fasta_file}', \
                                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
+        remove(fasta_file) 
         if outcome.returncode==2 or outcome.returncode==1:
             raise OSError(f'Error generating BLAST database: {outcome.stderr}')
 

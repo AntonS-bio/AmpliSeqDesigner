@@ -1,8 +1,9 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 import pandas as pd
 import uuid
 from io import TextIOWrapper
 from Bio import SeqIO
+import copy
 
 class SNP:
     def __init__(self, **kwargs) -> None:
@@ -75,7 +76,7 @@ class SNP:
 
     @sensitivity.setter
     def sensitivity(self, value: float):
-        self._sensitivity = value
+        self._sensitivity = float(value)
 
     @property
     def specificity(self) -> float:
@@ -134,6 +135,12 @@ class SNP:
     def __hash__(self):
         return hash( (self.ref_contig_id, self.position, self.alt_base) )
 
+    def copy(self):
+        """Creates deep copy of the SNP instance
+        """
+        new_snp=copy.deepcopy(self)
+        return new_snp
+
 class Sample:
     """Represents a VCF sample and contains SNPs associated with it
 
@@ -156,7 +163,7 @@ class Sample:
         self._genotype = value
 
     @property
-    def vcf_file(self) -> List[SNP]:
+    def vcf_file(self) -> str:
         return self._vcf_file
 
     @property
@@ -326,7 +333,6 @@ class FlankingAmplicon(Amplicon):
     def is_left(self, value: bool):
         self._is_left = value
 
-
     @classmethod
     def from_parent_bed_line(cls,ref_fasta_file: str, is_left: bool, max_len:int, parent: Amplicon):
         """Constructor basesd on parent sequence and maximum amplicon length. 
@@ -369,6 +375,8 @@ class Genotype:
         self._name=name
         self._subgenotypes:List[str]=[name] #everygenotype has itself as subgenotypes
         self._defining_snps:List[SNP]=[]
+        self._alleles: Dict[SNP, str]={}
+        self._amplicons: List[Amplicon]=[]
 
     @property
     def name(self) -> str:
@@ -383,12 +391,24 @@ class Genotype:
         self._subgenotypes = value
 
     @property
-    def defining_snps(self) -> List[SNP]:
-        return self._defining_snps
+    def amplicons(self) -> List[Amplicon]:
+        return self._amplicons
 
-    @defining_snps.setter
-    def defining_snps(self, value: List[SNP]):
-        self._defining_snps = value
+    @amplicons.setter
+    def amplicons(self, value: List[Amplicon]):
+        self._amplicons = value
+
+    @property
+    def defining_snps(self) -> List[SNP]:
+        return list(self._alleles.keys())
+
+    def get_genotype_allele(self, snp: SNP) -> str:
+        if snp not in self._alleles:
+            raise ValueError(f'SNP with coordinates {snp.coordinate} is not present among snps of genotype {self._name}')
+        return self._alleles[snp]
+
+    def add_genotype_allele(self, snp: SNP, allele: str):
+        self._alleles[snp]=allele
 
     @property
     def defining_snp_coordinates(self) -> List[Tuple[str,int]]:
