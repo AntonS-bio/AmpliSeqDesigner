@@ -28,7 +28,7 @@ class IdentifySpeciesSnps:
         for amplicon_id, msa_df in msa_dfs.items():
             current_amplicon=[f for f in genotype.amplicons if f.id==amplicon_id][0]
             ampicon_msa_seq: List[str]=[f for f in msa_df.loc[amplicon_id]]
-            msa_to_amplicon_coord: Dict[int, int] =self._map_msa_to_ref_coordinates(amplicon=current_amplicon, msa_seq=ampicon_msa_seq )
+            msa_to_amplicon_coord: Dict[int, int] =self._map_msa_to_ref_coordinates( msa_seq=ampicon_msa_seq )
 
       
             if msa_df.shape[0]==1:
@@ -40,18 +40,19 @@ class IdentifySpeciesSnps:
                     bases_at_position=Counter(msa_df[col])
                     if bases_at_position[target_nucleotide]==1:
                         for alt_base, count in bases_at_position.items():
-                            snp=SNP(ref_contig_id=current_amplicon.ref_contig, ref_base=target_nucleotide, alt_base=alt_base,  position=current_amplicon.ref_start+msa_to_amplicon_coord[i])
-                            #snp.alt_base=bases_at_position.most_common(1)[0][0] #.most_common() returns list of tuples hence [0][0]
-                            if snp.alt_base=="-":
-                                snp.alt_base="."
-                            snp.passes_filters=True
-                            snp.specificity=1
-                            snp.sensitivity=1
-                            snp.is_species_snp=True
-                            genotype.add_genotype_allele(snp, snp.ref_base)
+                            if alt_base!=target_nucleotide:
+                                snp=SNP(ref_contig_id=current_amplicon.ref_contig, ref_base=target_nucleotide, alt_base=alt_base,  position=current_amplicon.ref_start+msa_to_amplicon_coord[i])
+                                #snp.alt_base=bases_at_position.most_common(1)[0][0] #.most_common() returns list of tuples hence [0][0]
+                                if snp.alt_base=="-":
+                                    snp.alt_base="."
+                                snp.passes_filters=True
+                                snp.specificity=1
+                                snp.sensitivity=1
+                                snp.is_species_snp=True
+                                genotype.add_genotype_allele(snp, snp.ref_base)
         return genotype
 
-    def _map_msa_to_ref_coordinates(self, amplicon:Amplicon, msa_seq:List[str])-> Dict[int, int]:
+    def _map_msa_to_ref_coordinates(self, msa_seq:List[str])-> Dict[int, int]:
         """MSA produces a sequence string with gaps so position of nucleotide in the string
         does not correspond to the position of nucleotide in reference sequence. 
         This function creates a mapping that allows SNP object to have coordinates of the reference

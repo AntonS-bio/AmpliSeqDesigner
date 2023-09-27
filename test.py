@@ -96,17 +96,17 @@ from data_classes import Genotype, Genotypes, SNP, FlankingAmplicon, Amplicon
 #### End tviD species SNPs section ####
 
 #### START MSA generation section ####
-# from identify_species_snps import IdentifySpeciesSnps
-# snp_identifier=IdentifySpeciesSnps(ref_fasta="/home/ubuntu/HandyAmpliconTool/test_data/inputs/GCA_000195995.1_for_VCFs.fasta",
-#                                    msa_dir="/home/ubuntu/HandyAmpliconTool/test_data/msa/",
-#                                    negative_genomes_dir="/home/ubuntu/HandyAmpliconTool/test_data/inputs/test_negative_genomes/genomes",
-#                                    temp_blast_db_dir="/home/ubuntu/HandyAmpliconTool/test_data/tempBlastDB/",
-#                                    amplicons_bed='/home/ubuntu/HandyAmpliconTool/test_data/outputs/multi_gt_intervals.bed')
+from identify_species_snps import IdentifySpeciesSnps
+snp_identifier=IdentifySpeciesSnps(ref_fasta="/home/ubuntu/HandyAmpliconTool/test_data/inputs/GCA_000195995.1_for_VCFs.fasta",
+                                   msa_dir="/home/ubuntu/HandyAmpliconTool/test_data/msa/",
+                                   negative_genomes_dir="/home/ubuntu/HandyAmpliconTool/test_data/inputs/test_negative_genomes/genomes",
+                                   temp_blast_db_dir="/home/ubuntu/HandyAmpliconTool/test_data/tempBlastDB/",
+                                   amplicons_bed='/home/ubuntu/HandyAmpliconTool/test_data/outputs/multi_gt_intervals.bed')
 
-# flanking_amplicons: Genotype=snp_identifier.identify_flanking_snps(max_seq_len=1000, max_blast_length_diff=90, min_blast_identity=60)
+flanking_amplicons: Genotype=snp_identifier.identify_flanking_snps(max_seq_len=1000, max_blast_length_diff=90, min_blast_identity=60)
 
-# with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_species_amplicons.pkl", "wb") as output:
-#     pickle.dump(flanking_amplicons, output)
+with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/test_species_amplicons.pkl", "wb") as output:
+    pickle.dump(flanking_amplicons, output)
 
 # sys.exit()
 #### END MSA generation section ####
@@ -159,7 +159,7 @@ with open("/home/ubuntu/HandyAmpliconTool/test_data/outputs/snps.vcf", "w") as v
                         suffix=[0]*len(gt_columns)
                         suffix[gt_columns[genotype.name]]=1 #0 is REF allele
                     else:
-                        suffix=[ 1 ]*len(gt_columns) #set 
+                        suffix=[1]*len(gt_columns) #set
                         suffix[gt_columns[genotype.name]]=0
                     vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
                     suffix[gt_columns["species"]]=0
