@@ -4,6 +4,7 @@ test_genomes/*
 test_data/msa/*
 test_data/inputs/test_negative_genomes/genomes/*
 test_data/tempBlastDB/*
+temp.sh
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -1,4 +1,3 @@
-#### At the moment this is placeholder. In future, this will be expanded to accomodate parsing of phylo trees to determine genotypes hierarchy
 from typing import Dict, List, Tuple, Set
 import pandas as pd
 import metadata_utils  as mu
@@ -11,14 +10,27 @@ from data_classes import Genotype, Genotypes, SNP, Sample
 from tqdm import tqdm
 
 class HierarchyUtilities:
-
+    """Class representing a hierarchy structure of the target organims.
+    The data is supplied as tab-delimited file
+    each row must contain (in first column) the target genotype
+    and MAY also contain in subsequent column subgenotypes of target genotype
+    There is no need to create rows for non-target genotypes
+    If the genotype has not subgenotypes, the row would only have target genotype
+    ex: 
+    4.3.1 4.3.1.1.P1 4.3.1.2 4.3.1.2
+    3.1.1
+    """
     def __init__(self, sensitivity_limit: float, specificity_limit: float) -> None:
         self.genotype_hierarchy: Dict[str,Genotype]={}
         self.sensitivity_limit=sensitivity_limit
         self.specificity_limit=specificity_limit
 
 
-    def load_hierarchy(self, filename) -> None:
+    def load_hierarchy(self, filename: str) -> None:
+        """Loads hierarchy data
+        :param filename: Path to tab delimited file containing genotype hierarchy
+        :type filename: str
+        """
         self.genotype_hierarchy: Dict[str,Genotype]={}
         with open(filename) as input_file:
             for i, line in enumerate(input_file):
@@ -39,28 +51,12 @@ class HierarchyUtilities:
     _genotype_snps: pd.DataFrame
     
    
-    # def _count_gt_allele_freq(self, target_gt: Genotype ) -> Genotype:
-    #     target_columns=[f for f in self._snp_data.columns if mu.meta_data.loc[nc.get_sample(f),mu.genotype_column] in target_gt.subgenotypes]
-    #     non_target_columns=[f for f in self._snp_data.columns if f not in target_columns]
-
-    #     total_target_samples=len(target_columns)
-    #     total_non_target_samples=len(non_target_columns)
-    #     for target_col_alleles, non_target_col_alleles, position in zip([Counter(f).most_common()[0] for f in self._snp_data[ target_columns ].values],
-    #                                                               [Counter(f) for f in self._snp_data[ non_target_columns ].values],
-    #                                                               self._snp_data.index):
-    #         snp=SNP(ref_contig_id=position[0], position=position[1],
-    #                 ref_base="REF", alt_base=target_col_alleles[0], )
-    #         total_target_in_non_target=0 if target_col_alleles[0] not in non_target_col_alleles else non_target_col_alleles[target_col_alleles[0]]
-    #         snp.sensitivity=target_col_alleles[1]/total_target_samples
-    #         snp.specificity=1-total_target_in_non_target/total_non_target_samples
-    #         snp.passes_filters = snp.sensitivity>self.specificity_limit and snp.specificity>self.sensitivity_limit
-    #         if snp.passes_filters:
-    #             target_gt.defining_snps.append(snp)
-
-    #     return target_gt
-
 
     def find_defining_snps(self, samples: List[Sample]) -> Genotypes:
+        """Identifies SNPs that are specific 
+        :param samples: Collection of all samples that were loaded from VCF files.
+        :type samples: List[Sample]
+        """
         genotypes=Genotypes()
         for gt_name, genotype in self.genotype_hierarchy.items():
             gt_samples=[f for f in samples if f.genotype in genotype.subgenotypes]
@@ -75,9 +71,11 @@ class HierarchyUtilities:
                     if invert_specificity_sensitivity:
                         specificity=1-gt_snp_count/len(gt_samples)
                         sensitivity=non_gt_snps[gt_snp]/len(non_gt_samples)
+                        allele_depth=non_gt_snps[gt_snp] 
                     else:
                         sensitivity=gt_snp_count/len(gt_samples)
                         specificity=1-non_gt_snps[gt_snp]/len(non_gt_samples)
+                        allele_depth=gt_snp_count 
                     if sensitivity>self.specificity_limit and specificity>self.sensitivity_limit and gt_snp not in genotype.defining_snps:
                         # gt_snp not in genotype.defining_snps check for redundancy
                         snp_copy=gt_snp.copy()
@@ -85,37 +83,12 @@ class HierarchyUtilities:
                         snp_copy.specificity=specificity
                         snp_copy.passes_filters=True
                         snp_copy.is_genotype_snp=True
-                        genotype.add_genotype_allele(snp_copy, gt_snp.ref_base if invert_specificity_sensitivity else gt_snp.alt_base)
+                        genotype_allele=gt_snp.ref_base if invert_specificity_sensitivity else gt_snp.alt_base
+                        genotype.add_genotype_allele(snp_copy, genotype_allele, allele_depth )
 
             genotypes.genotypes.append(genotype)
             print(f'{genotype.name} has {str(len(genotype.defining_snps))} SNPs')
         return genotypes
-
-    # def find_defining_snps(self, snp_data: pd.DataFrame) -> Genotypes:
-    #     self._column_to_gt: List[str]=[mu.meta_data.loc[nc.get_sample(f), mu.genotype_column] for f in snp_data.columns]
-    #     self._snp_data=snp_data
-
-    #     if __name__ == 'hierarchy_utils':
-    #         present_gts: Set[Genotype]=set()
-    #         for gt_name, genotype in self.genotype_hierarchy.items():
-    #             if gt_name not in self._column_to_gt:
-    #                 if len([ f for f in  genotype.subgenotypes if f in self._column_to_gt ]):
-    #                     warnings.warn(f'Genotype {gt_name} is not present in samples, but some of its subgenotypes are')
-    #                     present_gts.add(genotype)
-    #                 else:
-    #                     warnings.warn(f'Neither genotype {gt_name}, nor any of its subgenotypes are present among samples')
-    #             else:
-    #                 present_gts.add(genotype)
-        
-    #         print("Identifying genotype SNPs")
-    #         pool = Pool(processes= min(  max(cpu_count()-1,1) , len(present_gts) ) )
-    #         results = list(tqdm( pool.imap(func=self._count_gt_allele_freq, iterable=list(present_gts)), total=len(present_gts) ))
-    #         return Genotypes(genotypes=results)
-    #         #pool = Pool(processes= 1 )
-    #         results=pool.map( self._count_gt_allele_freq, list(present_gts) ) 
-    #         pool.close()
-    #         pool.join()
-    #         return results
 
 
 

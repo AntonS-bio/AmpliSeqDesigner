@@ -2,11 +2,21 @@
 ### this avoids program crashing mid-way due to bad inputs.
 
 from os.path import exists
+from os import listdir
 import warnings
 from tqdm import tqdm
 from Bio import SeqIO
+from typing import Set
 
 class ValidateFiles:
+
+    def __init__(self) -> None:
+        self._validated_files: Set[str]=set()
+    
+    @property
+    def validated_files(self) -> Set[str]:
+        return self._validated_files
+
 
     def validate_many(self, file_list, files_type) -> None:
         if len(file_list)==0:
@@ -41,6 +51,7 @@ class ValidateFiles:
                     raise ValueError(f'Value in column 2 must be greater than value in column 1. Check {bed_file_name} on line {line_counter}:\n {line}')
             if 'line_counter' not in vars():
                 raise ValueError(f'{bed_file_name} is empty')
+        self._validated_files.add(bed_file_name)
         return None
 
     def validate_fasta(self, fasta_file_name: str) -> None:
@@ -52,6 +63,7 @@ class ValidateFiles:
                 raise ValueError(f'Fasta file {fasta_file_name} is empty')
             if first_fifty_char[0]!=">":
                 raise ValueError(f'Fasta file must have ">" on first line in {fasta_file_name}\n {first_fifty_char}')
+        self._validated_files.add(fasta_file_name)
         return None
     
     def check_fasta_for_dashes(self, fasta_file_name: str) -> None:
@@ -104,7 +116,11 @@ class ValidateFiles:
             warnings.warn("\n"+f'None of the contigs in VCF file {vcf_file_name} are present in bedfile {bed_file_name}')
             return False
 
-    def validate_vcf(self, vcf_file_name: str) -> None:
+    def validate_vcf(self, vcfs_dir: str) -> None:
+        vcf_files=[file for file in listdir(vcfs_dir) if file.split(".")[-1]=="vcf"]
+        if len(vcf_files)==0:
+            raise IOError(f'Directory {vcfs_dir} have no VCF files')
+        vcf_file_name=vcfs_dir+vcf_files[0]
         if not exists(vcf_file_name):
             raise FileExistsError(f'File or directory {vcf_file_name} does not exist')
         vcf_file= open(vcf_file_name)
@@ -119,7 +135,7 @@ class ValidateFiles:
                 if line[0:6]=="#CHROM" and len(line.split("\t"))<=9:
                     vcf_file.close()
                     raise ValueError(f'The header VCF line (#CHROM...) should have 9 or more lines, but has fewer in file {vcf_file_name}')
-                    break
+        self._validated_files.add(vcf_file_name)                    
         return None
 
     def validate_hierarchy(self, hierarchy_file_name: str) -> None:
@@ -128,7 +144,7 @@ class ValidateFiles:
         with open(hierarchy_file_name) as input_file:
             if input_file.readline()=="":
                 raise ValueError(f'Genotype hierarchy file {hierarchy_file_name} has no lines')
-
+        self._validated_files.add(hierarchy_file_name)    
 
 
         

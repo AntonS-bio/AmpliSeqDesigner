@@ -8,7 +8,7 @@ class SnpOptimiser:
     def __init__(self) -> None:
         pass
 
-    def optimise(self, snp_interval: int, genotypes: Genotypes) -> List[object]:
+    def optimise(self, snp_interval: int, genotypes: Genotypes, rare_gts: List[str]) -> List[object]:
         """Select SNPs based on how many fall within a maximum permitted amplicon range
 
         :param snp_interval: Maximum length of amplicon 
@@ -25,10 +25,9 @@ class SnpOptimiser:
             j=i #this means the first snp is automatically added
             while j<len(sorted_snps) and sorted_snps[j][0]==sorted_snps[i][0] and sorted_snps[j][1]-sorted_snps[i][1]<snp_interval:
                 j+=1
-            if j>i+1:
-                if j>max_reached_index: #this account for some intervals containing >2 snps. Without this, these intervals would create multiple entries in interval_snps
-                    interval_snps.append( {"snps": sorted_snps[i:j], "genotypes":[] } ) # j, not j-1 because python excludes the last element of index
-                    max_reached_index=j-1
+            if j>max_reached_index: #this account for some intervals containing >2 snps. Without this, these intervals would create multiple entries in interval_snps
+                interval_snps.append( {"snps": sorted_snps[i:j], "genotypes":[] } ) # j, not j-1 because python excludes the last element of index
+                max_reached_index=j-1
             i+=1
         # check which GTs are captured by which lists of SNPs
         # Remove those that capture same GT multiple times - this is likely due to structural variant
@@ -36,13 +35,12 @@ class SnpOptimiser:
             interval["genotypes"]=set()
             for genotype in genotypes.genotypes:
                 temp=set(interval['snps']) & set(genotype.defining_snp_coordinates) #this is probably not the most efficient way.
-                if len(temp)>1: #two snps defining same genotype in close proximity
-                    #probably a structural variant which are currently not supported
+                if len(temp)>9: #allow for some SNPs in close proximity. 9 is three AA deletion or insertion
                     continue
-                elif len(temp)==1:
+                elif len(temp)<=9:
                     interval["genotypes"].add(genotype.name)
 
-        interval_snps=[snp_interval for snp_interval in interval_snps if len(snp_interval["genotypes"])>1 ]
+        interval_snps=[snp_interval for snp_interval in interval_snps if len(snp_interval["genotypes"])>1 or len(set(snp_interval["genotypes"]) & set(rare_gts))>0 ]
         captured_genotypes=set([f for genotypes in interval_snps for f in genotypes["genotypes"]])
         not_captured_genotypes=[f.name for f in genotypes.genotypes if f.name not in captured_genotypes ]
         print(f'Genotypes not captured by intervals: {", ".join(not_captured_genotypes)}')

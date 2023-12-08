@@ -4,6 +4,8 @@ import uuid
 from io import TextIOWrapper
 from Bio import SeqIO
 import copy
+from json import load
+from os.path import exists
 
 class SNP:
     def __init__(self, **kwargs) -> None:
@@ -138,8 +140,7 @@ class SNP:
     def copy(self):
         """Creates deep copy of the SNP instance
         """
-        new_snp=copy.deepcopy(self)
-        return new_snp
+        return copy.deepcopy(self)
 
 class Sample:
     """Represents a VCF sample and contains SNPs associated with it
@@ -286,6 +287,13 @@ class Amplicon:
             return True
         else:
             return False
+        
+    def coord_in_amplicon(self, coordinates:Tuple[str, int]) -> bool:
+        if coordinates[0]==self.ref_contig and \
+        coordinates[1]>=self.ref_start and coordinates[1]<=self.ref_end:
+            return True
+        else:
+            return False
 
     @property
     def snps(self) -> List[SNP]:
@@ -374,8 +382,8 @@ class Genotype:
     def __init__(self, name: str) -> None:
         self._name=name
         self._subgenotypes:List[str]=[name] #everygenotype has itself as subgenotypes
-        self._defining_snps:List[SNP]=[]
         self._alleles: Dict[SNP, str]={}
+        self._allele_depths: Dict[SNP, int]={}
         self._amplicons: List[Amplicon]=[]
 
     @property
@@ -407,8 +415,14 @@ class Genotype:
             raise ValueError(f'SNP with coordinates {snp.coordinate} is not present among snps of genotype {self._name}')
         return self._alleles[snp]
 
-    def add_genotype_allele(self, snp: SNP, allele: str):
+    def get_genotype_allele_depth(self, snp: SNP) -> str:
+        if snp not in self._allele_depths:
+            raise ValueError(f'SNP with coordinates {snp.coordinate} is not present among snps of genotype {self._name}')
+        return self._allele_depths[snp]
+
+    def add_genotype_allele(self, snp: SNP, allele: str, depth: int):
         self._alleles[snp]=allele
+        self._allele_depths[snp]=depth
 
     @property
     def defining_snp_coordinates(self) -> List[Tuple[str,int]]:
@@ -502,6 +516,106 @@ class BlastResult:
     def query_file_name(self, value: str):
         self._query_file_name = value
 
+    @property
+    def value(self) -> str:
+        return f'{self._qseqid} {str(self._qstart)} {str(self._qend)} {self._sseqid} {str(self._sstart)} {str(self._send)}'
+    
+class Primer:
+    def __init__(self, seq: str, g_c: float, t_m: float) -> None:
+        self._t_m=t_m
+        self._seq=seq
+        self._g_c=g_c
+
+    @property
+    def t_m(self) -> float:
+        return self._t_m
+
+    @t_m.setter
+    def t_m(self, value: float):
+        self._t_m = float(value)
+
+    @property
+    def seq(self) -> str:
+        return self._seq
+
+    @seq.setter
+    def seq(self, value: str):
+        self._seq = value
+
+    @property
+    def g_c(self) -> float:
+        return self._g_c
+
+    @g_c.setter
+    def g_c(self, value: float):
+        self._g_c = float(value)
+
+    @property
+    def ref_start(self) -> int:
+        return self._ref_start
+
+    @ref_start.setter
+    def ref_start(self, value: int):
+        self._ref_start = int(value)
+
+    @property
+    def ref_end(self) -> int:
+        return self._ref_start+len(self.seq)
+
+
+    def __hash__(self):
+        return hash( (self.seq, self.ref_start, self.ref_end) )
+
+class PrimerPair:
+    def __init__(self, name: str, forward: Primer, reverse: Primer) -> None:
+        self._name=name
+        self._uuid=str(uuid.uuid4())
+        self._forward=forward
+        self._reverse=reverse
+
+    @property
+    def forward(self) -> Primer:
+        return self._forward
+
+    @property
+    def reverse(self) -> Primer:
+        return self._reverse
+
+
+    @property
+    def penalty(self) -> int:
+        return self._penalty
+    
+    @penalty.setter
+    def penalty(self, value: float):
+        self._penalty = float(value)
+
+    @property
+    def primers(self) -> List[Primer]:
+        return [self._forward, self._reverse]
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def uuid(self) -> str:
+        return self._uuid
+
+    @property
+    def value(self) -> str:
+        return '\t'.join([str(f) for f in [self.name,self.forward.ref_start, self.reverse.ref_end,
+                          self.length, "NA", "NA", self.forward.seq, self.forward.t_m,
+                          self.reverse.seq, self.reverse.t_m]] )
+
+    @property
+    def length(self) -> int:
+        return self._reverse.ref_end - self._forward.ref_start
+
+    def seq_in_pair(self, seq: str) -> bool:
+        return self._forward.seq==seq or self._reverse.seq==seq
+
+
 class Genotypes:
     def __init__(self, **kwargs) -> None:
         """Constructor
@@ -518,6 +632,12 @@ class Genotypes:
     @genotypes.setter
     def genotypes(self, value: List[Genotype]):
         self._genotypes = list(value)
+
+    def get_genotype(self, genotype_name: str) -> Genotype:
+        for genotype in self._genotypes:
+            if genotype.name==genotype_name:
+                return genotype
+
 
     def all_snps_coord_sorted(self) -> List[Tuple[str, int]]:
         """Returns a list of unique contig + position pairs 
@@ -544,3 +664,107 @@ class Genotypes:
                 index=unique_contig_pos.index((snp.ref_contig_id, snp.position))
                 output_df.loc[index, gt.name]=snp.passes_filters
         return output_df
+
+class InputConfiguration:
+
+    def __init__(self, file_name: str):
+        try:
+            with open(file_name) as config_file:
+                self._config_data = load(config_file)
+        except IOError as error:
+            if not exists(config_file):
+                raise IOError(f'Config file {config_file} does not exist') from error
+            else:
+                raise IOError(f'Error loading file {config_file}. It exits, but cannot be processed.') from error
+        
+    @property
+    def config_data(self) -> Dict:
+        return self._config_data
+    
+    @property
+    def root_dir(self) -> str:
+        return self._config_data["root_dir"]
+
+    @property
+    def name_stubs(self) -> str:
+        return self._config_data["name_stubs"]
+
+    @property
+    def reference_fasta(self) -> str:
+        return self._config_data["input_files"]["reference_fasta"]
+    
+    @property
+    def repeats_bed_file(self) -> str:
+        return self._config_data["input_files"]["repeats_bed_file"]
+    
+    @property
+    def hierarchy_file(self) -> str:
+        return self._config_data["input_files"]["hierarchy_file"]
+
+    @property
+    def meta_data_file(self) -> str:
+        return self._config_data["input_files"]["meta_data_file"]
+    
+    @property
+    def vcf_dir(self) -> str:
+        return self._config_data["input_directories"]["vcf_dir"]
+
+    @property
+    def negative_genomes(self) -> str:
+        return self._config_data["input_directories"]["negative_genomes"]
+    
+    @property
+    def temp_blast_db(self) -> str:
+        return self._config_data["input_directories"]["temp_blast_db"]        
+    
+    @property
+    def metadata_delim(self) -> str:
+        return self._config_data["metadata_parameters"]["delimiter"]        
+
+    @property
+    def genotype_column(self) -> str:
+        return self._config_data["metadata_parameters"]["genotype_column"]
+    
+    @property
+    def snp_specificity(self) -> str:
+        return self._config_data["analysis_parameters"]["snp_specificity"]
+    
+    @property
+    def snp_sensitivity(self) -> str:
+        return self._config_data["analysis_parameters"]["snp_sensitivity"]
+    
+    @property
+    def gts_with_few_snps(self) -> str:
+        return self._config_data["analysis_parameters"]["gts_with_few_snps"]
+
+    @property
+    def output_dir(self) -> str:
+        return self._config_data["output_files"]["output_dir"]
+
+    @property
+    def genotype_snps(self) -> str:
+        return self.output_dir+self._config_data["output_files"]["genotype_snps"]
+    
+    @property
+    def snps_bed(self) -> str:
+        return self.output_dir+self._config_data["output_files"]["snps_bed"]
+    
+    @property
+    def genotypes_data(self) -> str:
+        return self.output_dir+self._config_data["output_files"]["genotypes_data"]
+    
+    @property
+    def species_data(self) -> str:
+        return self.output_dir+self._config_data["output_files"]["species_data"]
+    
+    @property
+    def multi_gt_intervals(self) -> str:
+        return self.output_dir+self._config_data["output_files"]["multi_gt_intervals"]
+    
+    @property
+    def msa_dir(self) -> str:
+        return self.output_dir+self._config_data["output_files"]["msa_dir"]
+    
+    @property
+    def snps_vcf(self) -> str:
+        return self.output_dir+self._config_data["output_files"]["snps_vcf"]

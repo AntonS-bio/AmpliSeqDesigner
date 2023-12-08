@@ -41,8 +41,6 @@ class GenotypeSnpIdentifier:
 
         :param specificity: Cutoff SNP specificity of SNP vs target genotype ex. 99, 90. Intended to accomodate noisy data.
         :type metadata_delimiter: float
-
-                
         """
         self.vcf_utils=VCFutilities()
         self.file_validator=ValidateFiles()
@@ -89,45 +87,4 @@ class GenotypeSnpIdentifier:
         genotype_bifurcating_snps: Genotypes=self.hierarchy_utils.find_defining_snps(vcfs)
 
         return genotype_bifurcating_snps
-
-
-
-
-
-    # def identify_snps(self) -> Genotypes:
-    #     """Scans VCF files for SNPs that segregate genotypes of interest from the rest.
-
-    #     """
-    #     vcfs: List[pd.DataFrame]=[]
-    #     print("Loading VCFs")
-    #     with tqdm(total=len(self.vcf_files)) as progress_meter:
-    #         for i, vcf in enumerate(self.vcf_files):
-    #             vcfs.append( self.vcf_utils.load_file(vcf ) )
-    #             progress_meter.update(1)
-
-    #     ##get total indices from all vcfs to preallocate dataframe, this is much faster than merge and the loading of the vcfs can be parallelised
-    #     vcf_columns=[""]*len(vcfs)
-    #     with tqdm(total=len(vcfs)) as progress_meter:
-    #         for i, vcf_data in enumerate(vcfs):
-    #             vcf_columns[i]=vcf_data.columns[-1]
-    #             progress_meter.update(1)
-    #     all_vcf_indices=sorted(set([k for f in vcfs for k in f.index]))
-    #     master_vcf=pd.DataFrame(index=all_vcf_indices, columns=vcf_columns)
-
-    #     print("Merging VCFs")
-    #     with tqdm(total=len(vcfs)) as progress_meter:
-    #         for vcf_data in vcfs:
-    #             master_vcf.loc[vcf_data.index, vcf_data.columns[-1]]=vcf_data[vcf_data.columns[-1]]
-    #             progress_meter.update(1)
-
-    #     del vcfs
-
-    #     master_vcf.fillna("REF", inplace=True)
-    #     #sys.exit()
-
-    #     if self.repeat_regions_file!="":
-    #         self.vcf_utils.remove_repeat_regions(master_vcf,self.repeat_regions_file)
-
-    #     genotype_bifurcating_snps: Genotypes=self.hierarchy_utils.find_defining_snps(master_vcf)
-
-    #     return genotype_bifurcating_snps
+    
