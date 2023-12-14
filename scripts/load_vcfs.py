@@ -65,41 +65,41 @@ class VCFutilities():
         else:
             raise ValueError(f'The vcf type {vcf_file_type} is not currently supported')
 
-    def load_file(self, filename: str) -> pd.DataFrame:
-        #### read the VCF file until #CHROM is reached
-        #### the preceeding lines are header
-        vcf_file_type="Unknown"
-        header_rows=0
-        with open(filename) as vcf_file:
-            for i, line in enumerate(vcf_file):
-                if line[0:6]=="#CHROM":
-                    header_rows=i
-                    header_columns=line.strip().split("\t")
-                    if len(header_columns)==10:
-                        vcf_file_type="single_sample"
-                    elif len(header_columns)>10:
-                        vcf_file_type="multi_sample"
-                    else:
-                        raise ValueError(f'VCF file {filename} has fewer than 10 columns which is minimum required')
+    # def load_file(self, filename: str) -> pd.DataFrame:
+    #     #### read the VCF file until #CHROM is reached
+    #     #### the preceeding lines are header
+    #     vcf_file_type="Unknown"
+    #     header_rows=0
+    #     with open(filename) as vcf_file:
+    #         for i, line in enumerate(vcf_file):
+    #             if line[0:6]=="#CHROM":
+    #                 header_rows=i
+    #                 header_columns=line.strip().split("\t")
+    #                 if len(header_columns)==10:
+    #                     vcf_file_type="single_sample"
+    #                 elif len(header_columns)>10:
+    #                     vcf_file_type="multi_sample"
+    #                 else:
+    #                     raise ValueError(f'VCF file {filename} has fewer than 10 columns which is minimum required')
 
-                    break
+    #                 break
 
-        if vcf_file_type=="single_sample":
-            vcf_datatypes={"CHROM":"string","POS":int, "REF": "string", "ALT": "string", "FORMAT": "string"}
-            vcf_data=pd.read_csv(filename, sep="\t", header=0, usecols=[0,1,4,5,8,9],  dtype=vcf_datatypes, skiprows=header_rows)
-            vcf_data["POS"]=vcf_data["POS"]-1 #the rest of the code is 0 indexed like BED and BAM, but VCF coordinates are 1-indexed
-            new_index=pd.MultiIndex.from_frame(vcf_data[ ["#CHROM","POS"] ])
-            vcf_data.set_index(new_index, inplace=True)
-            #check for duplicate combinations of contig+position i.e. indices
-            #the tool is meant for bacteria, so non-haploid calls are a problem
-            self._has_duplicate_positions(vcf_data, filename)
-            #drop invariant sites, non-haploid and delecitons are not supported.
-            self._drop_invariant_sites(vcf_data, filename)
-            vcf_data.drop(vcf_data.columns[0:-1], axis=1, inplace=True)
-            name_converters.add_value(vcf_data.columns[-1],metadata_utils.meta_data.index)
-        else:
-            raise ValueError(f'The vcf type {vcf_file_type} is not currently supported')
-        return vcf_data
+    #     if vcf_file_type=="single_sample":
+    #         vcf_datatypes={"CHROM":"string","POS":int, "REF": "string", "ALT": "string", "FORMAT": "string"}
+    #         vcf_data=pd.read_csv(filename, sep="\t", header=0, usecols=[0,1,4,5,8,9],  dtype=vcf_datatypes, skiprows=header_rows)
+    #         vcf_data["POS"]=vcf_data["POS"]-1 #the rest of the code is 0 indexed like BED and BAM, but VCF coordinates are 1-indexed
+    #         new_index=pd.MultiIndex.from_frame(vcf_data[ ["#CHROM","POS"] ])
+    #         vcf_data.set_index(new_index, inplace=True)
+    #         #check for duplicate combinations of contig+position i.e. indices
+    #         #the tool is meant for bacteria, so non-haploid calls are a problem
+    #         self._has_duplicate_positions(vcf_data, filename)
+    #         #drop invariant sites, non-haploid and delecitons are not supported.
+    #         self._drop_invariant_sites(vcf_data, filename)
+    #         vcf_data.drop(vcf_data.columns[0:-1], axis=1, inplace=True)
+    #         name_converters.add_value(vcf_data.columns[-1],metadata_utils.meta_data.index)
+    #     else:
+    #         raise ValueError(f'The vcf type {vcf_file_type} is not currently supported')
+    #     return vcf_data
 
     def _drop_invariant_sites(self, data: pd.DataFrame, filename:str) -> None:
         #shrinks data to only show non-reference alleles
@@ -131,6 +131,8 @@ class VCFutilities():
 
     def load_repeat_regions(self, bed_file: str):
         self._repeat_coordinates: Set[ Tuple[str, int] ] =set()
+        if bed_file=="":
+            return None
         with open(bed_file) as bed_data:
             for line in bed_data:
                 values=line.strip().split("\t")

@@ -49,8 +49,6 @@ class HierarchyUtilities:
     _snp_data: pd.DataFrame=pd.DataFrame()
     _column_to_gt: List[str]
     _genotype_snps: pd.DataFrame
-    
-   
 
     def find_defining_snps(self, samples: List[Sample]) -> Genotypes:
         """Identifies SNPs that are specific 
@@ -89,6 +87,4 @@ class HierarchyUtilities:
             genotypes.genotypes.append(genotype)
             print(f'{genotype.name} has {str(len(genotype.defining_snps))} SNPs')
         return genotypes
-
-
 

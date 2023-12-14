@@ -18,7 +18,7 @@ class ValidateFiles:
         return self._validated_files
 
 
-    def validate_many(self, file_list, files_type) -> None:
+    def validate_many(self, file_list, files_type) -> True:
         if len(file_list)==0:
             raise ValueError(f'Cannot validate an empty list')
         with tqdm(total=len(file_list)) as progress_meter:
@@ -32,9 +32,9 @@ class ValidateFiles:
                 else:
                     raise ValueError(f'Unknown files type: {files_type}')
                 progress_meter.update(1)
-        return None
+        return True
 
-    def validate_bed(self, bed_file_name: str) -> None:
+    def validate_bed(self, bed_file_name: str) -> True:
         if not exists(bed_file_name):
             raise FileExistsError(f'File or directory {bed_file_name} does not exist')
         
@@ -52,9 +52,9 @@ class ValidateFiles:
             if 'line_counter' not in vars():
                 raise ValueError(f'{bed_file_name} is empty')
         self._validated_files.add(bed_file_name)
-        return None
+        return True
 
-    def validate_fasta(self, fasta_file_name: str) -> None:
+    def validate_fasta(self, fasta_file_name: str) -> True:
         if not exists(fasta_file_name):
             raise FileExistsError(f'File or directory {fasta_file_name} does not exist')
         with open(fasta_file_name) as fasta_file:
@@ -64,15 +64,16 @@ class ValidateFiles:
             if first_fifty_char[0]!=">":
                 raise ValueError(f'Fasta file must have ">" on first line in {fasta_file_name}\n {first_fifty_char}')
         self._validated_files.add(fasta_file_name)
-        return None
+        return True
     
-    def check_fasta_for_dashes(self, fasta_file_name: str) -> None:
+    def fasta_has_dashes(self, fasta_file_name: str) -> bool:
         with open(fasta_file_name) as fasta_file:
             for line in fasta_file:
                 if line[0]!=">":
                     if line.find("-")>-1:
                         warnings.warn(f'Fasta file {fasta_file_name} has "-". This is likely to cause problems')
-        return None
+                        return True
+        return False
     
     def contigs_in_fasta(self, bed_file_name: str, fasta_file_name: str) -> bool:
         ### Assume that bed and fasta files have already been validated
@@ -92,7 +93,9 @@ class ValidateFiles:
         return True
             
     def contigs_in_vcf(self, bed_file_name: str, vcf_file_name: str) -> bool:
-        ### Assume that bed and fasta files have already been validated
+        '''Checks that at least one bedfile contig is present in the VCF file
+        Does NOT check if ALL bed file contigs are in the VCF file because some contigs
+        may not have SNPs'''
         bed_contigs=set()
         with open(bed_file_name) as bed_file:
             for line in (bed_file):
@@ -138,13 +141,15 @@ class ValidateFiles:
         self._validated_files.add(vcf_file_name)                    
         return None
 
-    def validate_hierarchy(self, hierarchy_file_name: str) -> None:
+    def validate_hierarchy(self, hierarchy_file_name: str) -> True:
         if not exists(hierarchy_file_name):
             raise FileExistsError(f'File or directory {hierarchy_file_name} does not exist')
         with open(hierarchy_file_name) as input_file:
-            if input_file.readline()=="":
-                raise ValueError(f'Genotype hierarchy file {hierarchy_file_name} has no lines')
-        self._validated_files.add(hierarchy_file_name)    
+            for line in input_file:
+                if line.strip()=="":
+                    raise ValueError(f'Genotype hierarchy file {hierarchy_file_name} has no lines')
+        self._validated_files.add(hierarchy_file_name)
+        return True
 
 
         

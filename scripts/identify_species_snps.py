@@ -1,8 +1,8 @@
 from generate_msa import MsaGenerator
 import pandas as pd
 from collections import Counter
-from Bio import SeqIO
-from typing import List, Dict, Tuple
+#from Bio import SeqIO
+from typing import List, Dict
 from data_classes import Amplicon, SNP, FlankingAmplicon, Genotype
 
 
@@ -19,6 +19,9 @@ class IdentifySpeciesSnps:
 
 
     def msa_df_to_msa_file(self, msa_df: pd.DataFrame, file_prefix: str) -> None:
+        """Converts pandas DataFrame with SNP data into MSA file
+        This is optional and useful for later looking into various SNPs
+        """
         with open(f'{self.msa_dir}/{file_prefix}.fasta', "w") as output_file:
             for index in msa_df.index:
                 output_file.write(f'>{index}'+"\n")
@@ -26,6 +29,7 @@ class IdentifySpeciesSnps:
 
 
     def _get_bifurcating_snps(self, genotype: Genotype) -> Genotype:
+        '''Identifies SNPs that separate target and non-target species around amplicon sequences'''
         msa_generator=MsaGenerator(temp_blast_db_dir=self.temp_blast_db_dir)
         
         msa_dfs: Dict[str, pd.DataFrame]=msa_generator.generate_msa(genotype.amplicons, output_dir=self.msa_dir, genomes_dir=self.negative_genomes_dir, 
@@ -35,7 +39,7 @@ class IdentifySpeciesSnps:
         #segregating_snps:List[SNP]=[]
 
         for amplicon_id, msa_df in msa_dfs.items():
-            self.msa_df_to_msa_file(msa_df, [f for f in genotype.amplicons if f.id==amplicon_id][0].name) ##this sames MSA files for fasta.
+            self.msa_df_to_msa_file(msa_df, [f for f in genotype.amplicons if f.id==amplicon_id][0].name) ##this saves MSA files for fasta.
             current_amplicon=[f for f in genotype.amplicons if f.id==amplicon_id][0]
             ampicon_msa_seq: List[str]=[f for f in msa_df.loc[amplicon_id]]
             msa_to_amplicon_coord: Dict[int, int] =self._map_msa_to_ref_coordinates( msa_seq=ampicon_msa_seq )

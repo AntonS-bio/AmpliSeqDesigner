@@ -5,7 +5,7 @@ from io import TextIOWrapper
 from Bio import SeqIO
 import copy
 from json import load
-from os.path import exists
+from os.path import exists, expanduser
 
 class SNP:
     def __init__(self, **kwargs) -> None:
@@ -133,6 +133,13 @@ class SNP:
 
     def __eq__(self, other) -> bool:
         return self.coordinate==other.coordinate and self.alt_base==other.alt_base
+    
+    def __lt__(self, other):
+        if self.ref_contig_id!=other.ref_contig_id:
+            return sorted([self.ref_contig_id, other.ref_contig_id])[0]==self.ref_contig_id #sort by IDs alphabetically
+        else:
+            return self.position<other.position #sort by position if IDs are the same
+
 
     def __hash__(self):
         return hash( (self.ref_contig_id, self.position, self.alt_base) )
@@ -381,10 +388,11 @@ class Genotype:
 
     def __init__(self, name: str) -> None:
         self._name=name
-        self._subgenotypes:List[str]=[name] #everygenotype has itself as subgenotypes
+        self._subgenotypes:List[str]=[name] #every genotype has itself as subgenotypes
         self._alleles: Dict[SNP, str]={}
         self._allele_depths: Dict[SNP, int]={}
         self._amplicons: List[Amplicon]=[]
+
 
     @property
     def name(self) -> str:
@@ -427,6 +435,7 @@ class Genotype:
     @property
     def defining_snp_coordinates(self) -> List[Tuple[str,int]]:
         return [f.coordinate for f in self.defining_snps if f.passes_filters]
+    
     
 class BlastResult:
     def __init__(self) -> None:
@@ -668,6 +677,7 @@ class Genotypes:
 class InputConfiguration:
 
     def __init__(self, file_name: str):
+        file_name=expanduser(file_name)
         try:
             with open(file_name) as config_file:
                 self._config_data = load(config_file)
@@ -683,7 +693,7 @@ class InputConfiguration:
     
     @property
     def root_dir(self) -> str:
-        return self._config_data["root_dir"]
+        return expanduser(self._config_data["root_dir"])
 
     @property
     def name_stubs(self) -> str:
@@ -691,35 +701,35 @@ class InputConfiguration:
 
     @property
     def reference_fasta(self) -> str:
-        return self._config_data["input_files"]["reference_fasta"]
+        return expanduser(self._config_data["input_files"]["reference_fasta"])
     
     @property
     def repeats_bed_file(self) -> str:
-        return self._config_data["input_files"]["repeats_bed_file"]
+        return expanduser(self._config_data["input_files"]["repeats_bed_file"])
     
     @property
     def hierarchy_file(self) -> str:
-        return self._config_data["input_files"]["hierarchy_file"]
+        return expanduser(self._config_data["input_files"]["hierarchy_file"])
 
     @property
     def meta_data_file(self) -> str:
-        return self._config_data["input_files"]["meta_data_file"]
+        return expanduser(self._config_data["input_files"]["meta_data_file"])
     
     @property
     def vcf_dir(self) -> str:
-        return self._config_data["input_directories"]["vcf_dir"]
+        return expanduser(self._config_data["input_directories"]["vcf_dir"])
 
     @property
     def negative_genomes(self) -> str:
-        return self._config_data["input_directories"]["negative_genomes"]
+        return expanduser(self._config_data["input_directories"]["negative_genomes"])
     
     @property
     def temp_blast_db(self) -> str:
-        return self._config_data["input_directories"]["temp_blast_db"]        
+        return expanduser(self._config_data["input_directories"]["temp_blast_db"])
     
     @property
     def metadata_delim(self) -> str:
-        return self._config_data["metadata_parameters"]["delimiter"]        
+        return self._config_data["metadata_parameters"]["delimiter"]
 
     @property
     def genotype_column(self) -> str:
@@ -739,7 +749,7 @@ class InputConfiguration:
 
     @property
     def output_dir(self) -> str:
-        return self._config_data["output_files"]["output_dir"]
+        return expanduser(self._config_data["output_files"]["output_dir"])
 
     @property
     def genotype_snps(self) -> str:

@@ -1,0 +1,5 @@
+genotype_hierarcy.tsv - empty file, raises ValueError
+test_data.bed - separator is space instead of tabs, correct contig NC_003199.1 was swapped for NC_003199.1, NC_003191.1, NC_003192.1, NC_003193.1
+test_vcf_data.bed - none of the contigs are present in VCF ERR4451473.vcf
+vcfs - directory with a small set of samples - one per genotype, contains
+    gts.tsv - the genotypes of the vcfs

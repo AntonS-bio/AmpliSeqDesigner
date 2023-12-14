@@ -1,12 +1,12 @@
 #take all fastas in specified directory and check all for specific gene
 from os import listdir, walk, mkdir, remove
-from os.path import isfile, join, splitext, split, exists
+from os.path import isfile, join, splitext, exists
 import subprocess
 from typing import List, Dict, Tuple
 from run_blast import BlastRunner
 from multiprocessing import cpu_count, Pool
 import pandas as pd
-from Bio import SeqIO
+#from Bio import SeqIO
 from Bio.Seq import Seq
 from data_classes import Amplicon, BlastResult
 from tqdm import tqdm
@@ -69,10 +69,6 @@ class MsaGenerator:
 
             return msa_dfs
 
-
-
-
-
     def _run_blast(self, subject_sequences: List[Amplicon], query_files: List[str]) -> List[BlastResult] :
         """Runs blast against a single file at a time using Pool
         this is the fastest implemintaiton of all tried
@@ -112,11 +108,10 @@ class MsaGenerator:
                 result.q_hit_len <= (amplicon_len[result.sseqid] + amplicon_len_delta[result.sseqid]) and \
                 result.pident >= self.min_blast_identity:
                 valid_amplicon_hits[result.sseqid].append(result)
-               
+
         del blast_resuls
         return valid_amplicon_hits
 
-    #def _align_results(self, blast_results: List[BlastResult], amplicon_id: str, amplicon_seq:str):
     def _align_results(self, values:List):
         """Take valid blast results and create a file of unalligned hits
         use MSA tool (here Mafft) to align them
@@ -133,7 +128,7 @@ class MsaGenerator:
                     seq_to_allign=result.qseq.replace("-","")
                 output.write(f'>{result.qseqid}'+"\n")
                 output.write(str(seq_to_allign)+"\n")
-            
+
         outcome=subprocess.run(f'mafft --retree 1 {fasta_file}', \
                                shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         remove(fasta_file) 
@@ -158,6 +153,6 @@ class MsaGenerator:
         indices=list(msa_result.keys())
         columns=len(msa_result[indices[0]])
         msa_df=pd.DataFrame(index=indices, columns=['pos_'+str(f) for f in range(0,columns)], dtype=str)
-        for id, sequence in msa_result.items():
-            msa_df.loc[id]=list(str(sequence).upper())
+        for seq_id, sequence in msa_result.items():
+            msa_df.loc[seq_id]=list(str(sequence).upper())
         return msa_df
