@@ -6,6 +6,7 @@ from Bio import SeqIO
 import copy
 from json import load
 from os.path import exists, expanduser
+from multiprocessing import cpu_count
 
 class SNP:
     def __init__(self, **kwargs) -> None:
@@ -214,8 +215,11 @@ class Amplicon:
             name='_'.join( [str(f) for f in bed_line_values[0:3] ] )
         ampl_start=int(ampl_start)
         ampl_end=int(ampl_end)
-        for record in SeqIO.parse(ref_fasta_file,"fasta"):
-            if record.id==ampl_chr:
+        with open(ref_fasta_file) as fasta_input:
+            for record in SeqIO.parse(fasta_input,"fasta"):
+                if record.id==ampl_chr:
+                    if ampl_end>len(str(record.seq)):
+                        raise ValueError(f'Contig {ampl_chr} is shorter, {len(str(record.seq))}nt, than end position of the amplicon: {ampl_end}')
                     new_amplicon=cls(name, str(record.seq[ampl_start:ampl_end]))
                     new_amplicon.ref_contig=record.id
                     new_amplicon.ref_start=ampl_start
@@ -436,10 +440,29 @@ class Genotype:
     def defining_snp_coordinates(self) -> List[Tuple[str,int]]:
         return [f.coordinate for f in self.defining_snps if f.passes_filters]
     
-    
 class BlastResult:
     def __init__(self) -> None:
         pass
+
+    @classmethod
+    def from_blast_line(cls, blast_line:str):
+        """Constructor using blast result output. 
+        :param blast_line: String from blast output, blast must  use "-outfmt "6 delim=  qseqid qstart qend sseqid sstart send pident evalue qseq"
+        :type blast_line: str
+
+        """
+        values=blast_line.split("\t")
+        new_result=cls()
+        new_result.qseqid=values[0]
+        new_result.qstart=int(values[1])
+        new_result.qend=int(values[2])
+        new_result.sseqid=values[3]
+        new_result.sstart=int(values[4])
+        new_result.send=int(values[5])
+        new_result.pident=float(values[6])
+        new_result.evalue=float(values[7])
+        new_result.qseq=values[8]
+        return new_result 
 
     @property
     def q_hit_len(self) -> int:
@@ -529,15 +552,28 @@ class BlastResult:
     def value(self) -> str:
         return f'{self._qseqid} {str(self._qstart)} {str(self._qend)} {self._sseqid} {str(self._sstart)} {str(self._send)}'
     
+    @property
+    def is_flipped(self) -> bool:
+        """Indicates if query and subject sequences are same strand i.e. align --> -->/ <-- <-- (True) or --> <-- / <-- / --> (False)
+        """
+        return self.send<self.sstart
+    
+    def coordinates_match(self, blast_result) -> bool:
+        for value in ["qstart", "qend", "sstart","send","pident","evalue","qseq"]:
+            if getattr(self,value)!=getattr(blast_result,value):
+                return False
+        return True
+        
 class Primer:
     def __init__(self, seq: str, g_c: float, t_m: float) -> None:
         self._t_m=t_m
         self._seq=seq
         self._g_c=g_c
+        self._ref_start=-1
 
     @property
     def t_m(self) -> float:
-        return self._t_m
+        return self._t_m    
 
     @t_m.setter
     def t_m(self, value: float):
@@ -569,8 +605,11 @@ class Primer:
 
     @property
     def ref_end(self) -> int:
-        return self._ref_start+len(self.seq)
-
+        return self._ref_start+len(self.seq)-1 #ATC sequence starting at index 0 would end at 2 (0+3-1)
+    
+    @property
+    def length(self) -> int:
+        return len(self.seq)
 
     def __hash__(self):
         return hash( (self.seq, self.ref_start, self.ref_end) )
@@ -665,7 +704,7 @@ class Genotypes:
             raise ValueError("The object has no genotypes in it.")
         unique_contig_pos: List[Tuple[str, int]]=self.all_snps_coord_sorted()
         gts: List[str]=[f.name for f in self.genotypes]
-        output_df=pd.DataFrame(columns=["Contig","Position"]+gts, index=range(0,len(unique_contig_pos))).fillna(False)
+        output_df: pd.DataFrame=pd.DataFrame(columns=["Contig","Position"]+gts, index=range(0,len(unique_contig_pos))).fillna(False)
         output_df["Contig"]=[f[0] for f in unique_contig_pos]
         output_df["Position"]=[f[1] for f in unique_contig_pos]
         for gt in self.genotypes:
@@ -676,11 +715,28 @@ class Genotypes:
 
 class InputConfiguration:
 
+    cpu_threads=1
+    flank_len_to_check=-1 #this is intentional to avoid hiding this parameters,
+    max_blast_length_diff=-1 #they must be defined in config file
+    min_blast_identity=-1
+    use_negative_genomes_subdir=False
+    output_dir=""
+    sensitivity_limit: float=-1.0
+    specificity_limit: float=-1.0
+
     def __init__(self, file_name: str):
         file_name=expanduser(file_name)
         try:
             with open(file_name) as config_file:
                 self._config_data = load(config_file)
+                InputConfiguration.cpu_threads=min(  max(cpu_count()-1,1) , self._config_data["max_cpus"] )
+                InputConfiguration.flank_len_to_check=self._config_data["analysis_parameters"]["flank_len_to_check"]
+                InputConfiguration.max_blast_length_diff=self._config_data["analysis_parameters"]["max_blast_length_diff"]
+                InputConfiguration.min_blast_identity=self._config_data["analysis_parameters"]["min_blast_identity"]
+                InputConfiguration.use_negative_genomes_subdir=str.lower(self._config_data["input_directories"]["use_negative_genomes_subdir"])=="true"
+                InputConfiguration.output_dir=expanduser(self._config_data["output_files"]["output_dir"])
+                InputConfiguration.specificity_limit=self._config_data["analysis_parameters"]["snp_specificity"]/100
+                InputConfiguration.sensitivity_limit=self._config_data["analysis_parameters"]["snp_sensitivity"]/100
         except IOError as error:
             if not exists(config_file):
                 raise IOError(f'Config file {config_file} does not exist') from error
@@ -690,7 +746,7 @@ class InputConfiguration:
     @property
     def config_data(self) -> Dict:
         return self._config_data
-    
+
     @property
     def root_dir(self) -> str:
         return expanduser(self._config_data["root_dir"])
@@ -735,21 +791,17 @@ class InputConfiguration:
     def genotype_column(self) -> str:
         return self._config_data["metadata_parameters"]["genotype_column"]
     
-    @property
-    def snp_specificity(self) -> str:
-        return self._config_data["analysis_parameters"]["snp_specificity"]
+    # @property
+    # def snp_specificity(self) -> str:
+    #     return self._config_data["analysis_parameters"]["snp_specificity"]
     
-    @property
-    def snp_sensitivity(self) -> str:
-        return self._config_data["analysis_parameters"]["snp_sensitivity"]
+    # @property
+    # def snp_sensitivity(self) -> str:
+    #     return self._config_data["analysis_parameters"]["snp_sensitivity"]
     
     @property
     def gts_with_few_snps(self) -> str:
         return self._config_data["analysis_parameters"]["gts_with_few_snps"]
-
-    @property
-    def output_dir(self) -> str:
-        return expanduser(self._config_data["output_files"]["output_dir"])
 
     @property
     def genotype_snps(self) -> str:

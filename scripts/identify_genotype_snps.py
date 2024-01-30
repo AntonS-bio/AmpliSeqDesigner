@@ -1,20 +1,19 @@
 from inputs_validation import ValidateFiles
-
 from os import listdir
 import metadata_utils as metadata_utils
 from load_vcfs import VCFutilities
 from hierarchy_utils import HierarchyUtilities
 import pandas as pd
 from typing import Dict, List
-from data_classes import Genotype, Genotypes, Sample, SNP, InputConfiguration
+from data_classes import  Genotypes, Sample, SNP, InputConfiguration
 from tqdm import tqdm
 
 class GenotypeSnpIdentifier:
 
-    debug=True
+    debug=False
     # def __init__(self, vcf_dir: str, hierarchy_file: str, meta_data_file: str,
     #              genotype_column: str, senstivity: float, specificity: float, **kwargs) -> None:
-    def __init__(self, config: InputConfiguration) -> None:    
+    def __init__(self, config: InputConfiguration) -> None:
 
         self.vcf_utils=VCFutilities()
         self.file_validator=ValidateFiles()
@@ -22,7 +21,7 @@ class GenotypeSnpIdentifier:
         if self.debug:
             self.vcf_files: List[str]=[f'{config.vcf_dir}{f}' for f in listdir(config.vcf_dir) ]
         else:
-            self.vcf_files: List[str]=[f'{config.vcf_dir}{f}' for f in listdir(config.vcf_dir) ] #use this to limit the number of samples loaded in debugging mode
+            self.vcf_files: List[str]=[f'{config.vcf_dir}{f}' for f in listdir(config.vcf_dir) ][0:2000] #use this to limit the number of samples loaded in debugging mode
 
         if config.repeats_bed_file!="":
             self.file_validator.validate_bed(config.repeats_bed_file)
@@ -35,12 +34,11 @@ class GenotypeSnpIdentifier:
             self.vcf_files.remove(sample)
         metadata_utils.genotype_column=config.genotype_column #this will be an input
 
-        if float(config.snp_sensitivity)<1 or float(config.snp_specificity)<1:
+        if float(config.sensitivity_limit)<0.001 or float(config.specificity_limit)<0.001:
             raise ValueError("Either sensitivity or specifity is <1, did you enter deciman instead of integer? Ex: 0.1 instead of 10.")
-        self.file_validator.validate_hierarchy(config.hierarchy_file)
-        self.hierarchy_utils=HierarchyUtilities( sensitivity_limit=config.snp_sensitivity/100, specificity_limit=config.snp_specificity/100)
+        self.hierarchy_utils=HierarchyUtilities()
         self.hierarchy_utils.load_hierarchy(config.hierarchy_file)
-
+        
 
     def identify_snps(self) -> Genotypes:
         """Scans VCF files for SNPs that segregate genotypes of interest from the rest.

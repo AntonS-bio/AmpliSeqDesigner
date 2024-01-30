@@ -4,16 +4,16 @@ from os.path import isfile, join, splitext, exists
 import subprocess
 from typing import List, Dict, Tuple
 from run_blast import BlastRunner
-from multiprocessing import cpu_count, Pool
+from multiprocessing import Pool
 import pandas as pd
 #from Bio import SeqIO
 from Bio.Seq import Seq
-from data_classes import Amplicon, BlastResult
+from data_classes import Amplicon, BlastResult, InputConfiguration
 from tqdm import tqdm
 
 class MsaGenerator:
-    use_sub_dirs=False
-    cpu_threads=8
+    #use_sub_dirs=False
+    #cpu_threads=8
 
     def __init__(self, temp_blast_db_dir: str) -> None:
         self.temp_blast_db_dir=temp_blast_db_dir
@@ -21,7 +21,7 @@ class MsaGenerator:
 
     def _get_fasta_files(self, dir_to_search: str):
         self.file_to_search=[]
-        if self.use_sub_dirs:
+        if InputConfiguration.use_negative_genomes_subdir:
             for path, subdirs, dir_files in walk(dir_to_search):
                 for name in dir_files:
                     if isfile(join(path, name)) and (splitext(name)[-1]==".fasta" or splitext(name)[-1]==".fna"):
@@ -29,39 +29,41 @@ class MsaGenerator:
         else:
             self.file_to_search = [dir_to_search+"/"+f for f in listdir(dir_to_search) if isfile(join(dir_to_search, f)) and (splitext(f)[-1]==".fasta" or splitext(f)[-1]==".fna")]
 
-    def generate_msa(self, amplicons:List[Amplicon], output_dir: str, genomes_dir:str, max_blast_length_diff: int,  min_blast_identity:int) -> Dict[str, pd.DataFrame]:
-        self.max_blast_length_diff=max_blast_length_diff
-        self.min_blast_identity=min_blast_identity
-        self.output_dir=output_dir
-        if not exists(self.output_dir):
-            mkdir(self.output_dir)
+    def generate_msa(self, amplicons:List[Amplicon], genomes_dir:str) -> Dict[str, pd.DataFrame]:
+        """Takes list of Amplicons and directory of genomes
+        blasts amplicon sequences against all genomes in directory 
+        and creates multiple sequences alignment file of blast results
+        one MSA per amplicon supplied
+        """
+        if not exists(InputConfiguration.output_dir):
+            mkdir(InputConfiguration.output_dir)
         #Collect fasta files against which to run blast
         self._get_fasta_files(genomes_dir)
         if len(self.file_to_search)==0:
-            if self.use_sub_dirs:
-                raise ValueError(f'No .fna or .fasta files found in {genomes_dir} or sub-directories.')
+            if InputConfiguration.use_negative_genomes_subdir:
+                raise ValueError(f'When looking for genomes to BLAST against, no .fna or .fasta files found in {genomes_dir} or sub-directories.')
             else:
-                raise ValueError(f'No .fna or .fasta files found in {genomes_dir}. Did you mean to include sub-directories?')
-        #self.file_to_search=self.file_to_search
+                raise ValueError(f'When looking for genomes to BLAST against, no .fna or .fasta files found in {genomes_dir}. Did you mean to include sub-directories?')
+
         blast_results_raw=self._run_blast(amplicons, self.file_to_search)
         blast_results=self._process_blast_results(blast_results_raw, amplicons)
+        return self._align_blast_results(blast_results, amplicons)
 
-
-
-
+    def _align_blast_results(self, blast_results: Dict[str, List[BlastResult]], amplicons: List[Amplicon]):
         if __name__ == 'generate_msa':
             print("Generating MSAs")
-            pool = Pool(processes= min(  max(cpu_count()-1,1) , self.cpu_threads ) )
+            pool = Pool(processes= InputConfiguration.cpu_threads )
             aligner_inputs:List=[]
-            for amplicon_id, amplicon_results in blast_results.items():
-                if len(amplicon_results)==0:
+            for amplicon_id, amplicon_blast_results in blast_results.items():
+                if len(amplicon_blast_results)==0:
                     continue
                 amplicon_seq=[f.seq for f in amplicons if f.id==amplicon_id][0]
-                aligner_inputs.append([amplicon_results,amplicon_id,amplicon_seq])
+                aligner_inputs.append([amplicon_blast_results,amplicon_id,amplicon_seq])
 
-            msa_results = list(tqdm( pool.imap(func=self._align_results, iterable=aligner_inputs), total=len(aligner_inputs) ))
+            msa_results = list(tqdm( pool.imap(func=self._align_results_helper, iterable=aligner_inputs), total=len(aligner_inputs) ))
+            pool.close()
             msa_dfs: Dict[str, pd.DataFrame]={}
-            for amplicon_id, amplicon_results in blast_results.items(): #this is a shortcut and a more robust solution is required in longer-term
+            for amplicon_id, amplicon_blast_results in blast_results.items(): #this is a shortcut and a more robust solution is required in longer-term
                 for result in msa_results:
                     if amplicon_id in result:
                         msa_dfs[amplicon_id]=self._msa_to_dataframe(result)
@@ -86,8 +88,8 @@ class MsaGenerator:
 
         if __name__ == 'generate_msa':
             print("Running BLAST against genomes")
-            pool = Pool(processes= min(  max(cpu_count()-1,1) , self.cpu_threads ) )
-            blast_results = list(tqdm( pool.imap(func=blast_runner.run_from_file, iterable=query_files), total=len(query_files) ))
+            with Pool(processes= InputConfiguration.cpu_threads) as pool: #min(  max(cpu_count()-1,1) , self.cpu_threads ) )
+                blast_results = list(tqdm( pool.imap(func=blast_runner.run_from_file, iterable=query_files), total=len(query_files) ))
             return [item for sublist in blast_results for item in sublist]
 
     def _process_blast_results(self, blast_resuls: List[BlastResult], target_amplicons: List[Amplicon]) -> Dict[str, List[BlastResult] ]:  #str is the name of the amplicon
@@ -99,24 +101,25 @@ class MsaGenerator:
         amplicon_len={}
         for amplicon in target_amplicons:
             amplicon_len[amplicon.id]=len(amplicon.seq)
-            amplicon_len_delta[amplicon.id]=int(len(amplicon.seq) * (self.max_blast_length_diff/100))
+            amplicon_len_delta[amplicon.id]=int(len(amplicon.seq) * (InputConfiguration.max_blast_length_diff/100))
             valid_amplicon_hits[amplicon.id]=[]
 
         for result in blast_resuls:
             #check lenght and identity
             if result.q_hit_len >= (amplicon_len[result.sseqid] - amplicon_len_delta[result.sseqid]) and \
                 result.q_hit_len <= (amplicon_len[result.sseqid] + amplicon_len_delta[result.sseqid]) and \
-                result.pident >= self.min_blast_identity:
+                result.pident >= InputConfiguration.min_blast_identity:
                 valid_amplicon_hits[result.sseqid].append(result)
 
         del blast_resuls
         return valid_amplicon_hits
 
-    def _align_results(self, values:List):
+    def _align_results_helper(self, values:List):
         """Take valid blast results and create a file of unalligned hits
         use MSA tool (here Mafft) to align them
         this might be replaced later, but at the moment this is simpler approach
         """
+        blast_results: List[BlastResult]; amplicon_id: str; amplicon_seq: str
         blast_results, amplicon_id, amplicon_seq=values
         fasta_file=f'{self.temp_blast_db_dir}/{amplicon_id}.fasta'
         with open(fasta_file, "w") as output:
@@ -136,17 +139,15 @@ class MsaGenerator:
             raise OSError(f'Error generating BLAST database: {outcome.stderr}')
 
         msa_results: Dict[str,str]={}
-        current_id=""
-        current_seq=""
+        ids=[]
+        sequences=[]
         for line in outcome.stdout.decode().strip().split("\n"):
             if line[0]==">":
-                if current_id!="":
-                    msa_results[current_id]=current_seq
-                current_id=line[1:]
-                current_seq=""
+                ids.append(line[1:])
+                sequences.append("")
             else:
-                current_seq=current_seq+line
-
+                sequences[-1]=sequences[-1]+line
+        msa_results=dict(  [(key, value) for key, value in zip(ids, sequences)  ] )
         return msa_results
 
     def _msa_to_dataframe(self, msa_result: Dict[str, str]) -> pd.DataFrame:

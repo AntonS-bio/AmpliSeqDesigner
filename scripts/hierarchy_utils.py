@@ -1,13 +1,8 @@
-from typing import Dict, List, Tuple, Set
+from typing import Dict, List
 import pandas as pd
-import metadata_utils  as mu
-import name_converters as nc
 from collections import Counter
-from multiprocessing import cpu_count, Pool
-import numpy as np
 import warnings
-from data_classes import Genotype, Genotypes, SNP, Sample
-from tqdm import tqdm
+from data_classes import Genotype, Genotypes, Sample, InputConfiguration
 
 class HierarchyUtilities:
     """Class representing a hierarchy structure of the target organims.
@@ -20,13 +15,11 @@ class HierarchyUtilities:
     4.3.1 4.3.1.1.P1 4.3.1.2 4.3.1.2
     3.1.1
     """
-    def __init__(self, sensitivity_limit: float, specificity_limit: float) -> None:
+    def __init__(self) -> None:
         self.genotype_hierarchy: Dict[str,Genotype]={}
-        self.sensitivity_limit=sensitivity_limit
-        self.specificity_limit=specificity_limit
 
 
-    def load_hierarchy(self, filename: str) -> None:
+    def load_hierarchy(self, filename: str) -> Dict[str,Genotype]:
         """Loads hierarchy data
         :param filename: Path to tab delimited file containing genotype hierarchy
         :type filename: str
@@ -45,13 +38,14 @@ class HierarchyUtilities:
                         raise ValueError(f'Genotype {value} appears more than once on line {i}: {line}')
                     genotype.subgenotypes.append(value)
                 self.genotype_hierarchy[ values[0] ]=genotype
+        return self.genotype_hierarchy
 
     _snp_data: pd.DataFrame=pd.DataFrame()
     _column_to_gt: List[str]
     _genotype_snps: pd.DataFrame
 
     def find_defining_snps(self, samples: List[Sample]) -> Genotypes:
-        """Identifies SNPs that are specific 
+        """Identifies SNPs that are specific to genotypes
         :param samples: Collection of all samples that were loaded from VCF files.
         :type samples: List[Sample]
         """
@@ -74,7 +68,7 @@ class HierarchyUtilities:
                         sensitivity=gt_snp_count/len(gt_samples)
                         specificity=1-non_gt_snps[gt_snp]/len(non_gt_samples)
                         allele_depth=gt_snp_count 
-                    if sensitivity>self.specificity_limit and specificity>self.sensitivity_limit and gt_snp not in genotype.defining_snps:
+                    if sensitivity>InputConfiguration.specificity_limit and specificity>InputConfiguration.sensitivity_limit and gt_snp not in genotype.defining_snps:
                         # gt_snp not in genotype.defining_snps check for redundancy
                         snp_copy=gt_snp.copy()
                         snp_copy.sensitivity=sensitivity
@@ -88,3 +82,4 @@ class HierarchyUtilities:
             print(f'{genotype.name} has {str(len(genotype.defining_snps))} SNPs')
         return genotypes
 
+       

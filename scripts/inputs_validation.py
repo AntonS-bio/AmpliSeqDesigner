@@ -7,6 +7,8 @@ import warnings
 from tqdm import tqdm
 from Bio import SeqIO
 from typing import Set
+from hierarchy_utils import HierarchyUtilities
+from data_classes import InputConfiguration
 
 class ValidateFiles:
 
@@ -141,15 +143,25 @@ class ValidateFiles:
         self._validated_files.add(vcf_file_name)                    
         return None
 
-    def validate_hierarchy(self, hierarchy_file_name: str) -> True:
+    def validate_hierarchy(self, hierarchy_file_name: str, config_data: InputConfiguration) -> bool:
         if not exists(hierarchy_file_name):
             raise FileExistsError(f'File or directory {hierarchy_file_name} does not exist')
         with open(hierarchy_file_name) as input_file:
             for line in input_file:
                 if line.strip()=="":
-                    raise ValueError(f'Genotype hierarchy file {hierarchy_file_name} has no lines')
+                    raise ValueError(f'Genotype hierarchy file {hierarchy_file_name} has no lines or empty lines')
         self._validated_files.add(hierarchy_file_name)
+
+        hierarchy_data=HierarchyUtilities().load_hierarchy(config_data.hierarchy_file)
+        self.rare_genotypes_in_hierarchy(config_data,hierarchy_data=hierarchy_data)
+        
         return True
 
-
-        
+    def rare_genotypes_in_hierarchy(self, config_data: InputConfiguration, hierarchy_data: HierarchyUtilities) -> bool:
+        rare_gts_no_in_hierarchy=[]
+        for genotype in config_data.gts_with_few_snps:
+            if genotype not in hierarchy_data:
+                rare_gts_no_in_hierarchy.append(genotype)
+        if len(rare_gts_no_in_hierarchy)>0:
+            mismatched_gts=",".join(rare_gts_no_in_hierarchy)
+            raise ValueError(f'Config file has genotype {mismatched_gts} as rare genotype, but its absent in first column of hierarchy file')

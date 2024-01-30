@@ -1,17 +1,19 @@
 {
+    "max_cpus": 8,
     "root_dir":"~/",
     "name_stubs":[".someotherstub"],
 
     "input_files":{
-    "reference_fasta": "~/HandyAmpliconTool/unit_test_data/valid_data/GCA_000195995.1.fasta",
-    "repeats_bed_file": "HandyAmpliconTool/unit_test_data/valid_data/ref_repeats.bed",
+    "reference_fasta": "~/HandyAmpliconTool/unit_test_data/valid_data/GCF_000195995.1_for_vcf.fna",
+    "repeats_bed_file": "~/HandyAmpliconTool/unit_test_data/valid_data/ref_repeats.bed",
     "hierarchy_file": "~/HandyAmpliconTool/unit_test_data/valid_data/genotype_hierarcy.tsv",
     "meta_data_file": "~/HandyAmpliconTool/unit_test_data/valid_data/gts.tsv"
     },
     
     "input_directories":{
     "vcf_dir": "~/HandyAmpliconTool/unit_test_data/valid_data/vcfs/",
-    "negative_genomes": "",
+    "negative_genomes": "/home/lshas17/HandyAmpliconTool/unit_test_data/valid_data/negative_genomes/",
+    "use_negative_genomes_subdir": "False",
     "temp_blast_db": "~/HandyAmpliconTool/unit_test_data/temp_data/"
     },
     
@@ -23,7 +25,10 @@
     "analysis_parameters":{
     "snp_specificity":99,
     "snp_sensitivity":99,
-    "gts_with_few_snps": ["4.3.1.1.P1","3.1.1"] 
+    "gts_with_few_snps": ["4.3.1.1.P1","3.1.1"],
+    "flank_len_to_check":1000,
+    "max_blast_length_diff": 90,
+    "min_blast_identity": 60
     },
     
     "output_files":{

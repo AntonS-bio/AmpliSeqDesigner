@@ -1,15 +1,25 @@
-from typing import Dict, Set
+from typing import Dict, Set, List
 from os.path import split
 
 _value_to_sample: Dict[str,str]={}
-converters=[_value_to_sample]
+converters: List[ Dict[str,str]]=[_value_to_sample]
 master_sample_set: Set[str]=set()
 name_stubs: Set[str]=set()
 
+def clear_all_names() -> None:
+    _value_to_sample.clear()
+    converters.clear()
+    converters.append(_value_to_sample)
+    master_sample_set.clear()
+    name_stubs.clear()
+
 def get_sample(input_value) -> str:
     for converter in converters:
+        value_to_get=sample_name(input_value)
         if input_value in converter:
             return converter[input_value]
+        elif value_to_get.file_name in converter:
+            return converter[value_to_get.file_name]
     raise ValueError(f'Value {input_value} is unknown among IDs')
 
 def remove_name_stubs(raw_name: str) -> str:
@@ -24,10 +34,10 @@ def value_exists(input_value) -> bool:
             return True
     return False
 
-def add_address(address) -> None:
-    probable_sample_name=filename_to_prefix(address_to_filename((address)))
-    _value_to_sample[address]=probable_sample_name
-    _value_to_sample[address_to_filename(address)]=probable_sample_name
+# def add_address(address) -> None:
+#     probable_sample_name=filename_to_prefix(address_to_filename((address)))
+#     _value_to_sample[address]=probable_sample_name
+#     _value_to_sample[address_to_filename(address)]=probable_sample_name
 
 def add_value(value_to_add: str, valid_values: Set[str]) -> bool:
     values_to_add=sample_name(value_to_add)
@@ -53,6 +63,7 @@ def address_to_filename(address) -> str:
     return filename
     
 def filename_to_prefix(filename) -> str:
+    filename=split(filename)[-1] # remove the directory part of the path if there is one.
     sample=".".join(filename.split(".")[0:-1])
     return sample
 

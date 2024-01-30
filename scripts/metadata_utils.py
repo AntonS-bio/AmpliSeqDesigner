@@ -10,15 +10,20 @@ metadata_filename: str = ""
 genotype_column: str=""
 warnings.formatwarning = lambda msg, *args, **kwargs: f'{msg}\n'
 
-#class MetadataUtilities:
+
 def load_metadata(config: InputConfiguration) -> bool:
-        #filename: str, separator: str) -> True:
-    global meta_data, metadata_filename
+    """Processes metadata file with genotypes information 
+    :param config: config object with address of the metadata file
+    :type config: InputConfiguration
+    """
+    global meta_data, metadata_filename, genotype_column
     meta_data=pd.read_csv(config.meta_data_file, sep=config.metadata_delim, index_col=0)
     if meta_data.size==0 or len(meta_data.columns)<1:
         raise ValueError(f'Metadata file has single column. Perhaps delimiter {config.metadata_delim} is incorrect? Use \\t for tab.')
     if config.genotype_column not in meta_data.columns:
         raise ValueError(f'Could not find genotype column {config.genotype_column} in metadata file {config.meta_data_file}.')
+    else:
+        genotype_column=config.genotype_column
     if Counter(meta_data.index.duplicated())[True]!=0:
         duplicate_indices=meta_data.index[meta_data.index.duplicated()]
         values_to_print="\n"+"\n".join(duplicate_indices)
@@ -27,6 +32,14 @@ def load_metadata(config: InputConfiguration) -> bool:
     return True
     
 def get_metavalue(sample: str, value_column: str) -> str:
+    """Get the metadata value for provided sample 
+    :param sample: sample name, name_converter is used to identify homogenous name
+    :type sample: str
+    :param value_column: metadata file column name from which to return value
+    :type value_column: str
+    :return: metadata value 
+    :rtype: str
+    """    
     global meta_data
     if value_column not in meta_data.columns:
         raise ValueError(f'File {metadata_filename} does not have column {value_column}')
@@ -36,6 +49,12 @@ def get_metavalue(sample: str, value_column: str) -> str:
         raise ValueError(f'Sample {sample} was not found among supplied VCFs')
 
 def samples_in_metadata(samples: List[str]) -> List[str]:
+    """Checks if samples are present in metadata file, is used to identify homogenous name
+    :param samples:list of samples names to check against loaded metadata file
+    :type samples: List[str]
+    :return: List of names that were not found in metadata
+    :rtype: List[str]
+    """   
     global meta_data
     samples_without_metadata:List[str]=[]
     for sample in samples:

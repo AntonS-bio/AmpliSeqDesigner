@@ -1,9 +1,8 @@
-from generate_msa import MsaGenerator
-import pandas as pd
 from collections import Counter
-#from Bio import SeqIO
 from typing import List, Dict
-from data_classes import Amplicon, SNP, FlankingAmplicon, Genotype
+import pandas as pd
+from generate_msa import MsaGenerator
+from data_classes import Amplicon, SNP, FlankingAmplicon, Genotype, InputConfiguration
 
 
 class IdentifySpeciesSnps:
@@ -17,26 +16,33 @@ class IdentifySpeciesSnps:
         self.msa_dir=msa_dir
         self.temp_blast_db_dir=temp_blast_db_dir
 
+    @classmethod
+    def from_config(cls, config: InputConfiguration) -> InputConfiguration:
+        """Constructor using bedfile lines. 
+        :param config: the config input
+        :type config: InputConfiguration
+        """
+        species_snp_finder=cls(config.reference_fasta, config.negative_genomes, config.msa_dir, config.multi_gt_intervals, config.temp_blast_db)
+        return species_snp_finder
 
-    def msa_df_to_msa_file(self, msa_df: pd.DataFrame, file_prefix: str) -> None:
+
+    def msa_df_to_msa_file(self, msa_df: pd.DataFrame, file_prefix: str) -> bool:
         """Converts pandas DataFrame with SNP data into MSA file
         This is optional and useful for later looking into various SNPs
         """
         with open(f'{self.msa_dir}/{file_prefix}.fasta', "w") as output_file:
             for index in msa_df.index:
                 output_file.write(f'>{index}'+"\n")
-                output_file.write(f'{"".join(msa_df.loc[index])}'+"\n")
+                output_file.write(f'{"".join( [str(f) for f in msa_df.loc[index]] ) }'+"\n")
+        return True
 
 
-    def _get_bifurcating_snps(self, genotype: Genotype) -> Genotype:
+    def get_bifurcating_snps(self, genotype: Genotype) -> Genotype:
         '''Identifies SNPs that separate target and non-target species around amplicon sequences'''
         msa_generator=MsaGenerator(temp_blast_db_dir=self.temp_blast_db_dir)
         
-        msa_dfs: Dict[str, pd.DataFrame]=msa_generator.generate_msa(genotype.amplicons, output_dir=self.msa_dir, genomes_dir=self.negative_genomes_dir, 
-                                                                        max_blast_length_diff=self.max_blast_length_diff,
-                                                                        min_blast_identity=self.min_blast_identity)
+        msa_dfs: Dict[str, pd.DataFrame]=msa_generator.generate_msa(genotype.amplicons, genomes_dir=self.negative_genomes_dir)
 
-        #segregating_snps:List[SNP]=[]
 
         for amplicon_id, msa_df in msa_dfs.items():
             self.msa_df_to_msa_file(msa_df, [f for f in genotype.amplicons if f.id==amplicon_id][0].name) ##this saves MSA files for fasta.
@@ -55,7 +61,7 @@ class IdentifySpeciesSnps:
                         continue #can't target primer to non-existent nucleotide
                     bases_at_position=Counter(msa_df[col])
                     if bases_at_position[target_nucleotide]==1: #i.e. the target strain nucleotide is unique among all other strains
-                        #four cases exist (here, T, C and A can be any nucleotide): 
+                        #four cases exist (here, T, C and A can be any nucleotide):
                         # 1) A vs TTTT : output T
                         # 2) A vs TTCC : output T and C
                         # 3) A vs ---- : output -
@@ -92,44 +98,43 @@ class IdentifySpeciesSnps:
                 msa_to_amplicon_position[msa_position]=-1
         return msa_to_amplicon_position
 
-    def identify_insequence_snps(self,  max_blast_length_diff: int,  min_blast_identity:int) -> List[Amplicon]:
-        """Identifies SNPs within amplicons that distinguish the amplicon from other 
-        genotypes. 
-        """        
-        self.max_blast_length_diff=max_blast_length_diff
-        self.min_blast_identity=min_blast_identity
-        genotype: Genotype=Genotype("species")
+    # def identify_insequence_snps(self,  max_blast_length_diff: int,  min_blast_identity:int) -> List[Amplicon]:
+    #     """Identifies SNPs within amplicons that distinguish the amplicon from other 
+    #     genotypes. 
+    #     """        
+    #     self.max_blast_length_diff=max_blast_length_diff
+    #     self.min_blast_identity=min_blast_identity
+    #     genotype: Genotype=Genotype("species")
 
-        with open(f'{self.amplicons_bed}') as input_bed_file: #don't keep the file open, hence why load it to memory
-            for line in input_bed_file:
-                new_amplicon=Amplicon.from_bed_line(line,self.ref_fasta)
-                genotype.amplicons.append(new_amplicon)
+    #     with open(f'{self.amplicons_bed}') as input_bed_file: #don't keep the file open, hence why load it to memory
+    #         for line in input_bed_file:
+    #             new_amplicon=Amplicon.from_bed_line(line,self.ref_fasta)
+    #             genotype.amplicons.append(new_amplicon)
         
-        result:Genotype = self._get_bifurcating_snps(genotype)
+    #     result:Genotype = self.get_bifurcating_snps(genotype)
 
-        return result
+    #     return result
 
-    def identify_flanking_snps(self, max_seq_len: int, max_blast_length_diff: int,  min_blast_identity:int) -> Genotype:
+    def generate_flanking_amplicons(self) -> Genotype:
         """Identifies SNPs within left and right amplicon flanking sequences
         The flanking sequences are max_len-amplicon_len which means that total length
         of flanking plus amplicon sequences may be longer than max_seq_len
         """        
-        self.max_blast_length_diff=max_blast_length_diff
-        self.min_blast_identity=min_blast_identity
         genotype: Genotype=Genotype("species")
 
         with open(f'{self.amplicons_bed}') as input_bed_file: #don't keep the file open, hence why load it to memory
             for line in input_bed_file:
+                if line.strip()=="":#catches the last line of bed file that can be just \n which user might not realise
+                    continue
                 new_amplicon=Amplicon.from_bed_line(line,self.ref_fasta)
                 genotype.amplicons.append(new_amplicon)
-                if max_seq_len>0:
-                    left_flanking=FlankingAmplicon.from_parent_bed_line(self.ref_fasta, True, max_seq_len, new_amplicon)
-                    right_flanking=FlankingAmplicon.from_parent_bed_line(self.ref_fasta, False, max_seq_len, new_amplicon)
+                if InputConfiguration.flank_len_to_check>0:
+                    left_flanking=FlankingAmplicon.from_parent_bed_line(self.ref_fasta, True, InputConfiguration.flank_len_to_check, new_amplicon)
+                    right_flanking=FlankingAmplicon.from_parent_bed_line(self.ref_fasta, False, InputConfiguration.flank_len_to_check, new_amplicon)
                     genotype.amplicons.append( left_flanking)
                     genotype.amplicons.append( right_flanking)
         
-        result:Genotype = self._get_bifurcating_snps(genotype)
+        return genotype
+    
 
-
-        return result
     
