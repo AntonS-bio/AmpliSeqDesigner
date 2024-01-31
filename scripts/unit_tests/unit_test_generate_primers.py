@@ -21,6 +21,8 @@ class TestPrimersGenerator(unittest.TestCase):
     existing_primers_fasta=f'{valid_data}/existing_primers.fasta'
     primer_seq_in_ref_direct="GCGGGCTTTACTGCCGGTAATGAAAAGG"
     primer_seq_in_ref_revcomp="CCTTTTCATTACCGGCAGTAAAGCCCGC"
+    species_snps=f'{valid_data}/species_snps.pkl'
+    gt_snps=f'{valid_data}/gt_snps.pkl'
 
     def setUp(self) -> None:
         self.config_data = InputConfiguration(self.config_file)
@@ -33,7 +35,7 @@ class TestPrimersGenerator(unittest.TestCase):
         self.assertEqual(self.generator._get_seq_coordinates_in_ref("NoneSuch"), -1)
 
     def test_sequence_to_primer(self):
-        new_primer=self.generator._sequence_to_primer(self.primer_seq_in_ref_direct)
+        new_primer=self.generator._sequence_to_primer(self.primer_seq_in_ref_direct, False)
         self.assertEqual(new_primer.length, 28)
         self.assertEqual(new_primer.ref_start, 897)
         self.assertEqual(new_primer.seq, self.primer_seq_in_ref_direct)
@@ -47,6 +49,23 @@ class TestPrimersGenerator(unittest.TestCase):
         self.assertRaises(ValueError, self.generator.load_existing_primer_from_bed, existing_primers_bed=self.invalid_existing_primers_bed)
         self.generator.load_existing_primer_from_bed(self.existing_primers_bed)
         self.assertTrue( len(self.generator.existing_primers)==4 )
+
+    def test_has_homodimers(self):
+        self.assertTrue(self.generator.forms_homodimers("GCGGGCTTTACTGCCGGTAATGAAAAGG"))
+        self.assertFalse( self.generator.forms_homodimers("TGCAACATGAAGGTGACGATG") )
+
+    def test_count_heterodimers(self):
+        self.generator.load_existing_primer_from_bed(self.existing_primers_bed)
+        self.generator.count_heterodimers(self.primer_seq_in_ref_direct,"Forward")
+        #### ADD Further checks here
+
+    def test_for_testing_load_gts(self):
+        self.generator._for_testing_load_gts(self.species_snps, self.gt_snps)
+
+    def test_find_candidate_primers(self):
+        self.generator._for_testing_load_gts(self.species_snps, self.gt_snps)
+        self.generator.find_candidate_primers()
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

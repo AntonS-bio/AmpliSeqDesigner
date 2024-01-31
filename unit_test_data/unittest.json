@@ -27,6 +27,7 @@
     "snp_sensitivity":99,
     "gts_with_few_snps": ["4.3.1.1.P1","3.1.1"],
     "flank_len_to_check":1000,
+    "min_amplicon_length": 200,    
     "max_blast_length_diff": 90,
     "min_blast_identity": 60
     },

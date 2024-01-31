@@ -565,11 +565,12 @@ class BlastResult:
         return True
         
 class Primer:
-    def __init__(self, seq: str, g_c: float, t_m: float) -> None:
+    def __init__(self, seq: str, g_c: float, t_m: float, is_reverse) -> None:
         self._t_m=t_m
         self._seq=seq
         self._g_c=g_c
         self._ref_start=-1
+        self._is_reverse=is_reverse
 
     @property
     def t_m(self) -> float:
@@ -596,6 +597,10 @@ class Primer:
         self._g_c = float(value)
 
     @property
+    def is_reverse(self) -> bool:
+        return self._is_reverse
+
+    @property
     def ref_start(self) -> int:
         return self._ref_start
 
@@ -620,6 +625,7 @@ class PrimerPair:
         self._uuid=str(uuid.uuid4())
         self._forward=forward
         self._reverse=reverse
+        self.targets: List[str]=[]
 
     @property
     def forward(self) -> Primer:
@@ -637,6 +643,15 @@ class PrimerPair:
     @penalty.setter
     def penalty(self, value: float):
         self._penalty = float(value)
+
+    @property
+    def targets(self) -> List[str]:
+        return self._targets
+    
+    @targets.setter
+    def targets(self, value: List[str]):
+        self._targets = [f for f in value]
+
 
     @property
     def primers(self) -> List[Primer]:
@@ -723,7 +738,7 @@ class InputConfiguration:
     output_dir=""
     sensitivity_limit: float=-1.0
     specificity_limit: float=-1.0
-
+    min_amplicon_length=200
     def __init__(self, file_name: str):
         file_name=expanduser(file_name)
         try:
@@ -737,6 +752,7 @@ class InputConfiguration:
                 InputConfiguration.output_dir=expanduser(self._config_data["output_files"]["output_dir"])
                 InputConfiguration.specificity_limit=self._config_data["analysis_parameters"]["snp_specificity"]/100
                 InputConfiguration.sensitivity_limit=self._config_data["analysis_parameters"]["snp_sensitivity"]/100
+                InputConfiguration.min_amplicon_length=self._config_data["analysis_parameters"]["min_amplicon_length"]
         except IOError as error:
             if not exists(config_file):
                 raise IOError(f'Config file {config_file} does not exist') from error
@@ -791,6 +807,7 @@ class InputConfiguration:
     def genotype_column(self) -> str:
         return self._config_data["metadata_parameters"]["genotype_column"]
     
+
     # @property
     # def snp_specificity(self) -> str:
     #     return self._config_data["analysis_parameters"]["snp_specificity"]
