@@ -9,6 +9,7 @@ from identify_genotype_snps import GenotypeSnpIdentifier
 import name_converters
 from snp_optimiser import SnpOptimiser
 from identify_species_snps import IdentifySpeciesSnps
+from primers_generator import PrimersGenerator
 
 #Check dependencies
 
@@ -121,63 +122,76 @@ with open(config_data.genotypes_data, "rb") as pickled_file:
 
 genotypes.genotypes.append(species)
 
-with open(config_data.snps_vcf, "w") as vcf_output_file:
-    #write the vcf header
-    vcf_output_file.write('##fileformat=VCFv4.2'+"\n")
-    vcf_output_file.write('##FILTER=<ID=PASS,Description="All filters passed">'+"\n")
-    vcf_output_file.write('##ALT=<ID=*,Description="Represents allele(s) other than observed.">'+"\n")
+#### START Generate primers ####
+generator=PrimersGenerator(config_data)
+generator._for_testing_load_gts(config_data.species_data, config_data.genotypes_data)
+generator.find_candidate_primers()
+with open(config_data.output_dir+"primers.tsv","w") as output_file:
+    header="\t".join(["Name", "Penalty", "Contig", "Start","End","Length",
+                    "Forward","Forward Tm", "Forward GC",
+                    "Reverse","Reverse Tm", "Reverse GC"])+"\n"
+    output_file.write(header)
+    for pair in generator.new_primer_pairs:
+        output_file.write(pair.to_string()+"\n")
 
-    for ref_contig in set([snp.ref_contig_id for genotype in genotypes.genotypes for snp in genotype.defining_snps]):
-        contig_max_position=max([snp.position for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.ref_contig_id == ref_contig])
-        vcf_output_file.write(f'##contig=<ID={ref_contig},length={str(contig_max_position)}>'+"\n")
-    header_line="#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t"
-    gt_columns={}
-    for i, gt in enumerate(genotypes.genotypes):
-        header_line=header_line+gt.name+"\t"
-        gt_columns[gt.name]=i
-    header_line=header_line+"NonTargetSerovar\n"
-    gt_columns["NonTargetSerovar"]=len(gt_columns)
-    vcf_output_file.write(header_line)
 
-    coordinates=sorted(set([coordinate for genotype in genotypes.genotypes for coordinate in genotype.defining_snp_coordinates]))
-    for contig_id, position in coordinates:
-        snps_at_coordinates=[(genotype, snp) for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.position==position and snp.ref_contig_id==contig_id]
-        alt_alleles=[base for base in [snp[1].alt_base for snp in snps_at_coordinates] ][0]
-        if len(alt_alleles)>1:
-            print(f'Excess alleles at pos: {str(position)} contig {contig_id}')
-            continue
-        alt_str=f'{alt_alleles}'
-        for genotype, snp in snps_at_coordinates:
-            #check that snp is in multi genotype region
-            if True not in set([f.snp_in_amplicon(snp) for f in species.amplicons]):
-                continue
+# with open(config_data.snps_vcf, "w") as vcf_output_file:
+#     #write the vcf header
+#     vcf_output_file.write('##fileformat=VCFv4.2'+"\n")
+#     vcf_output_file.write('##FILTER=<ID=PASS,Description="All filters passed">'+"\n")
+#     vcf_output_file.write('##ALT=<ID=*,Description="Represents allele(s) other than observed.">'+"\n")
 
-            if snp.passes_filters:
-                if genotype.name!="species":
-                    if genotype.get_genotype_allele(snp)==snp.alt_base:
-                        suffix=["1:."]*len(gt_columns)
-                        suffix[gt_columns[genotype.name]]="1:"+str(genotype.get_genotype_allele_depth(snp)) #0 is REF allele
-                    else:
-                        suffix=["1:."]*len(gt_columns) #set
-                        suffix[gt_columns[genotype.name]]="0:"+str(genotype.get_genotype_allele_depth(snp))
-                    vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
-                    suffix[gt_columns["species"]]=0
-                    suffix[gt_columns["NonTargetSerovar"]]=".:."
-                else:
-                    vcf_snp_id="_".join( ["Serovar", snp.ref_contig_id ,str(snp.position+1), snp.alt_base] )
-                    suffix=["1:."]*len(gt_columns)
-                    suffix[gt_columns["NonTargetSerovar"]]="1:"+str(genotypes.genotypes[-1].get_genotype_allele_depth(snp))
-                    alt_str=snp.alt_base
-                vcf_output_file.write("\t".join([str(f) for f in [snp.ref_contig_id,
-                                                                    snp.position+1,
-                                                                    vcf_snp_id,
-                                                                    snp.ref_base,
-                                                                    alt_str,
-                                                                    ".",
-                                                                    "PASS",
-                                                                    ".",
-                                                                    "GT:DP",
-                                                                    ]+suffix ]   ) +"\n" )
+#     for ref_contig in set([snp.ref_contig_id for genotype in genotypes.genotypes for snp in genotype.defining_snps]):
+#         contig_max_position=max([snp.position for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.ref_contig_id == ref_contig])
+#         vcf_output_file.write(f'##contig=<ID={ref_contig},length={str(contig_max_position)}>'+"\n")
+#     header_line="#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t"
+#     gt_columns={}
+#     for i, gt in enumerate(genotypes.genotypes):
+#         header_line=header_line+gt.name+"\t"
+#         gt_columns[gt.name]=i
+#     header_line=header_line+"NonTargetSerovar\n"
+#     gt_columns["NonTargetSerovar"]=len(gt_columns)
+#     vcf_output_file.write(header_line)
+
+#     coordinates=sorted(set([coordinate for genotype in genotypes.genotypes for coordinate in genotype.defining_snp_coordinates]))
+#     for contig_id, position in coordinates:
+#         snps_at_coordinates=[(genotype, snp) for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.position==position and snp.ref_contig_id==contig_id]
+#         alt_alleles=[base for base in [snp[1].alt_base for snp in snps_at_coordinates] ][0]
+#         if len(alt_alleles)>1:
+#             print(f'Excess alleles at pos: {str(position)} contig {contig_id}')
+#             continue
+#         alt_str=f'{alt_alleles}'
+#         for genotype, snp in snps_at_coordinates:
+#             #check that snp is in multi genotype region
+#             if True not in set([f.snp_in_amplicon(snp) for f in species.amplicons]):
+#                 continue
+
+#             if snp.passes_filters:
+#                 if genotype.name!="species":
+#                     if genotype.get_genotype_allele(snp)==snp.alt_base:
+#                         suffix=["1:."]*len(gt_columns)
+#                         suffix[gt_columns[genotype.name]]="1:"+str(genotype.get_genotype_allele_depth(snp)) #0 is REF allele
+#                     else:
+#                         suffix=["1:."]*len(gt_columns) #set
+#                         suffix[gt_columns[genotype.name]]="0:"+str(genotype.get_genotype_allele_depth(snp))
+#                     vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
+#                     suffix[gt_columns["species"]]=0
+#                     suffix[gt_columns["NonTargetSerovar"]]=".:."
+#                 else:
+#                     vcf_snp_id="_".join( ["Serovar", snp.ref_contig_id ,str(snp.position+1), snp.alt_base] )
+#                     suffix=["1:."]*len(gt_columns)
+#                     suffix[gt_columns["NonTargetSerovar"]]="1:"+str(genotypes.genotypes[-1].get_genotype_allele_depth(snp))
+#                     alt_str=snp.alt_base
+#                 vcf_output_file.write("\t".join([str(f) for f in [snp.ref_contig_id,
+#                                                                     snp.position+1,
+#                                                                     vcf_snp_id,
+#                                                                     snp.ref_base,
+#                                                                     alt_str,
+#                                                                     ".",
+#                                                                     "PASS",
+#                                                                     ".",
+#                                                                     "GT:DP",
+#                                                                     ]+suffix ]   ) +"\n" )
 
 #### END write VCF ####
 

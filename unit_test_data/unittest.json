@@ -22,26 +22,34 @@
     "genotype_column":"Genotype"
     },
     
+    "output_files":{
+        "output_dir":"~/HandyAmpliconTool/unit_test_data/temp_data/",
+        "genotype_snps":"genotype_snps.tsv",
+        "snps_bed":"genotype_snps.bed",
+        "genotypes_data":"test_gt_snps.pkl",
+        "species_data": "test_species_amplicons.pkl",
+        "multi_gt_intervals":"multi_gt_intervals.bed",
+        "msa_dir":"/msa/",
+        "snps_vcf":"snps.vcf"
+        },
+        
     "analysis_parameters":{
     "snp_specificity":99,
-    "snp_sensitivity":99,
+    "snp_sensitivity":99.9,
     "gts_with_few_snps": ["4.3.1.1.P1","3.1.1"],
     "flank_len_to_check":1000,
-    "min_amplicon_length": 200,    
+    "min_amplicon_length": 400,    
     "max_blast_length_diff": 90,
     "min_blast_identity": 60
     },
-    
-    "output_files":{
-    "output_dir":"~/HandyAmpliconTool/unit_test_data/temp_data/",
-    "genotype_snps":"genotype_snps.tsv",
-    "snps_bed":"genotype_snps.bed",
-    "genotypes_data":"test_gt_snps.pkl",
-    "species_data": "test_species_amplicons.pkl",
-    "multi_gt_intervals":"multi_gt_intervals.bed",
-    "msa_dir":"/msa/",
-    "snps_vcf":"snps.vcf"
+
+    "primers_parameters": {
+        "PRIMER_OPT_SIZE": 20,
+        "PRIMER_OPT_TM": 60.0,
+        "PRIMER_MIN_TM": 55.0,
+        "PRIMER_MAX_TM": 65.0
     }
+    
     }
     
     

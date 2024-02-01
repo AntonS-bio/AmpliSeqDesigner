@@ -7,21 +7,16 @@ import pandas as pd
 from typing import Dict, List
 from data_classes import  Genotypes, Sample, SNP, InputConfiguration
 from tqdm import tqdm
+import pickle
 
 class GenotypeSnpIdentifier:
 
-    debug=False
-    # def __init__(self, vcf_dir: str, hierarchy_file: str, meta_data_file: str,
-    #              genotype_column: str, senstivity: float, specificity: float, **kwargs) -> None:
     def __init__(self, config: InputConfiguration) -> None:
 
         self.vcf_utils=VCFutilities()
         self.file_validator=ValidateFiles()
         self.master_vcf=pd.DataFrame()
-        if self.debug:
-            self.vcf_files: List[str]=[f'{config.vcf_dir}{f}' for f in listdir(config.vcf_dir) ]
-        else:
-            self.vcf_files: List[str]=[f'{config.vcf_dir}{f}' for f in listdir(config.vcf_dir) ][0:2000] #use this to limit the number of samples loaded in debugging mode
+        self.vcf_files: List[str]=[f'{config.vcf_dir}{f}' for f in listdir(config.vcf_dir) ] #use this to limit the number of samples loaded in debugging mode
 
         if config.repeats_bed_file!="":
             self.file_validator.validate_bed(config.repeats_bed_file)

@@ -1,7 +1,6 @@
 from typing import Dict, List
 import pandas as pd
 from collections import Counter
-import warnings
 from data_classes import Genotype, Genotypes, Sample, InputConfiguration
 
 class HierarchyUtilities:
@@ -63,7 +62,7 @@ class HierarchyUtilities:
                     if invert_specificity_sensitivity:
                         specificity=1-gt_snp_count/len(gt_samples)
                         sensitivity=non_gt_snps[gt_snp]/len(non_gt_samples)
-                        allele_depth=non_gt_snps[gt_snp] 
+                        allele_depth=non_gt_snps[gt_snp]
                     else:
                         sensitivity=gt_snp_count/len(gt_samples)
                         specificity=1-non_gt_snps[gt_snp]/len(non_gt_samples)

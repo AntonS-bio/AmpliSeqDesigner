@@ -7,7 +7,7 @@ print(unit_test_dir)
 import unittest
 from data_classes import InputConfiguration, FlankingAmplicon, Amplicon, BlastResult
 
-class TestFileValidators(unittest.TestCase):
+class TestDataClasses(unittest.TestCase):
     valid_data=expanduser("~/HandyAmpliconTool/unit_test_data/valid_data/")
     invalid_data=expanduser("~/HandyAmpliconTool/unit_test_data/invalid_data/")
     config_file=expanduser("~/HandyAmpliconTool/unit_test_data/unittest.json")

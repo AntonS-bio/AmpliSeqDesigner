@@ -1,20 +1,15 @@
-import unittest
-import inputs_validation
-from identify_genotype_snps import GenotypeSnpIdentifier
-import name_converters
-from data_classes import Genotype, Genotypes, InputConfiguration
+from data_classes import InputConfiguration
+from primers_generator import PrimersGenerator
 
-config_data = InputConfiguration("~/HandyAmpliconTool/unit_test_data/unittest.json")
 
-for stub in config_data.name_stubs:
-    name_converters.name_stubs.add(stub)
-
-snp_identifier=GenotypeSnpIdentifier(vcf_dir=config_data.vcf_dir,
-                                    hierarchy_file=config_data.hierarchy_file,
-                                    meta_data_file=config_data.meta_data_file,
-                                    genotype_column=config_data.genotype_column,
-                                    repeat_regions_file=config_data.repeats_bed_file,
-                                    meta_deliminter=config_data.metadata_delim,
-                                    specificity=config_data.snp_sensitivity,
-                                    senstivity=config_data.snp_specificity)
-genotypes: Genotypes = snp_identifier.identify_snps()
+config_data = InputConfiguration("/home/lshas17/HandyAmpliconTool/test_data/configs/2.3.1.json")
+generator=PrimersGenerator(config_data)
+generator._for_testing_load_gts(config_data.species_data, config_data.genotypes_data)
+generator.find_candidate_primers()
+with open(config_data.output_dir+"primers.tsv","w") as output_file:
+    header="\t".join(["Name", "Penalty", "Contig", "Target","Ref","Alt", "Start","End","Length",
+                    "Forward","Forward Tm", "Forward GC",
+                    "Reverse","Reverse Tm", "Reverse GC"])+"\n"
+    output_file.write(header)
+    for pair in generator.new_primer_pairs:
+        output_file.write(pair.to_string()+"\n")

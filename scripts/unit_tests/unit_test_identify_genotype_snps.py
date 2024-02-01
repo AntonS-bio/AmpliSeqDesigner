@@ -64,7 +64,7 @@ class TestGenotypSnps(unittest.TestCase):
         # major change in the way SNPs are identified. 
         # At the moment, no such change is planned.
         # with open(expanduser("~/HandyAmpliconTool/unit_test_data/valid_data/genotype.pkl"), "wb") as output:
-        #     pickle.dump(genotypes, output)
+        #     pickle.dump(computed_genotypes, output)
         with open(f'{self.valid_data}/genotype.pkl', "rb") as pickled_file:
             valid_genotypes: Genotypes = pickle.load(pickled_file)
         for computed_genotype in computed_genotypes.genotypes:
@@ -85,7 +85,7 @@ class TestGenotypSnps(unittest.TestCase):
         amplicon_intervals=snp_opimiser.optimise(max_iterval_len,valid_genotypes, rare_gts=["4.3.1.1.P1"])
         # This file should only be changed with a major change in the way SNPs are identified. 
         # At the moment, no such change is planned.        
-        # with open(expanduser("~/HandyAmpliconTool/unit_test_data/valid_data/amplicon_intervals.pkl"), "wb") as output:
+        # with open(expanduser(f'{self.valid_data}/amplicon_intervals.pkl'), "wb") as output:
         #     pickle.dump(amplicon_intervals, output)
         # This file is required by some downstream analysis, but should be kept fixed
         # with open(self.config_data.genotypes_data, "wb") as output:

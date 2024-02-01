@@ -36,17 +36,20 @@ class ValidateFiles:
                 progress_meter.update(1)
         return True
 
-    def validate_bed(self, bed_file_name: str) -> True:
+    def validate_bed(self, bed_file_name: str, **kwargs) -> True:
+        """Class for validate input bedfile
+        :key min_col_number: minimum required number of column in bed file, default: 3, int
+        """        
         if not exists(bed_file_name):
             raise FileExistsError(f'File or directory {bed_file_name} does not exist')
-        
+        min_column_count=kwargs.get("min_col_number",3)
         with open(bed_file_name) as bed_file:
             for line_counter, line in enumerate(bed_file):
                 if line.find("\t")==-1:
                     raise ValueError(f'No tab-delimited found in file {bed_file_name} on line {line_counter}:\n {line}')
                 line_values=line.strip().split("\t")
-                if len(line_values)<3:
-                    raise ValueError(f'Min numpber of tab-delimited columns in 3, but only {len(line_values)} were found on line {line_counter}:\n {line} ')
+                if len(line_values)<min_column_count:
+                    raise ValueError(f'Min number of tab-delimited columns is {min_column_count}, but only {len(line_values)} were found on line {line_counter}:\n {line} ')
                 if not line_values[1].isdigit() or not line_values[2].isdigit():
                     raise ValueError(f'Expecting numeric values in column 1 and 2, but none numeric values (posibly decimal) values were found in {bed_file_name} on line {line_counter}:\n {line}')
                 if int(line_values[2])<=int(line_values[1]):

@@ -610,7 +610,7 @@ class Primer:
 
     @property
     def ref_end(self) -> int:
-        return self._ref_start+len(self.seq)-1 #ATC sequence starting at index 0 would end at 2 (0+3-1)
+        return self._ref_start+len(self.seq)
     
     @property
     def length(self) -> int:
@@ -625,6 +625,7 @@ class PrimerPair:
         self._uuid=str(uuid.uuid4())
         self._forward=forward
         self._reverse=reverse
+        self.ref_contig="Unknown"
         self.targets: List[str]=[]
 
     @property
@@ -635,8 +636,16 @@ class PrimerPair:
     def reverse(self) -> Primer:
         return self._reverse
 
-
     @property
+    def ref_contig(self) -> str:
+        return self._ref_contig
+
+    @ref_contig.setter
+    def ref_contig(self, value: str):
+        self._ref_contig = value
+
+
+    @property #Lower penalty is better
     def penalty(self) -> int:
         return self._penalty
     
@@ -645,13 +654,12 @@ class PrimerPair:
         self._penalty = float(value)
 
     @property
-    def targets(self) -> List[str]:
+    def targets(self) -> List[SNP]:
         return self._targets
     
     @targets.setter
-    def targets(self, value: List[str]):
+    def targets(self, value: List[SNP]):
         self._targets = [f for f in value]
-
 
     @property
     def primers(self) -> List[Primer]:
@@ -677,6 +685,23 @@ class PrimerPair:
 
     def seq_in_pair(self, seq: str) -> bool:
         return self._forward.seq==seq or self._reverse.seq==seq
+    
+    def __eq__(self, __value: object) -> bool:
+        return self.uuid==__value.uuid
+    
+    def to_string(self) -> str:
+        return '\t'.join([str(f) for f in [self.name,
+                                    '{0:.2f}'.format(self.penalty),
+                                    self.ref_contig,
+                                    self.forward.ref_start,
+                                    self.reverse.ref_end,
+                                    self.reverse.ref_end-self.forward.ref_start,
+                                    self.forward.seq,
+                                    '{0:.2f}'.format(self.forward.t_m),
+                                    '{0:.2f}'.format(self.forward.g_c),
+                                    self.reverse.seq,
+                                    '{0:.2f}'.format(self.reverse.t_m),
+                                    '{0:.2f}'.format(self.reverse.g_c)]])
 
 
 class Genotypes:
@@ -808,14 +833,23 @@ class InputConfiguration:
         return self._config_data["metadata_parameters"]["genotype_column"]
     
 
-    # @property
-    # def snp_specificity(self) -> str:
-    #     return self._config_data["analysis_parameters"]["snp_specificity"]
-    
-    # @property
-    # def snp_sensitivity(self) -> str:
-    #     return self._config_data["analysis_parameters"]["snp_sensitivity"]
-    
+    @property
+    def primer_opt_size(self) -> str:
+        return self._config_data["primers_parameters"]["PRIMER_OPT_SIZE"]
+
+    @property
+    def primer_opt_tm(self) -> str:
+        return self._config_data["primers_parameters"]["PRIMER_OPT_TM"]
+
+    @property
+    def primer_min_tm(self) -> str:
+        return self._config_data["primers_parameters"]["PRIMER_MIN_TM"]
+
+    @property
+    def primer_max_tm(self) -> str:
+        return self._config_data["primers_parameters"]["PRIMER_MAX_TM"]
+
+       
     @property
     def gts_with_few_snps(self) -> str:
         return self._config_data["analysis_parameters"]["gts_with_few_snps"]

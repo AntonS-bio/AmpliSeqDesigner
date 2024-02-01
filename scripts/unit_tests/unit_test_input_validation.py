@@ -4,17 +4,20 @@ from sys import path
 path.append( f'{unit_test_dir}/..')
 import unittest
 import inputs_validation
+from data_classes import InputConfiguration
 
 
 class TestInputValidation(unittest.TestCase):
     valid_data=expanduser("~/HandyAmpliconTool/unit_test_data/valid_data/")
     invalid_data=expanduser("~/HandyAmpliconTool/unit_test_data/invalid_data/")
+    config_file=expanduser("~/HandyAmpliconTool/unit_test_data/unittest.json")
 
     def test_validate_hierarchy(self):
+        config=InputConfiguration(self.config_file)
         validator=inputs_validation.ValidateFiles()
-        self.assertRaises(FileExistsError,validator.validate_hierarchy, hierarchy_file_name="empty")
-        self.assertTrue(validator.validate_hierarchy(f'{self.valid_data}/genotype_hierarcy.tsv'))
-        self.assertRaises(ValueError,validator.validate_hierarchy, hierarchy_file_name=f'{self.invalid_data}/genotype_hierarcy.tsv')
+        self.assertRaises(FileExistsError,validator.validate_hierarchy, hierarchy_file_name="empty", config_data=config)
+        self.assertTrue(validator.validate_hierarchy(f'{self.valid_data}/genotype_hierarcy.tsv', config) )
+        self.assertRaises(ValueError,validator.validate_hierarchy, hierarchy_file_name=f'{self.invalid_data}/genotype_hierarcy.tsv', config_data=config)
 
     def test_validate_bed(self):
         validator=inputs_validation.ValidateFiles()

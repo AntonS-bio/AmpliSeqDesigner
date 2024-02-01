@@ -5,8 +5,13 @@ from data_classes import BlastResult
 from typing import List
 
 class BlastRunner:
-    def __init__(self) -> None:
-        pass
+    def __init__(self, **kwargs) -> None:
+        """Class for running BLAST searches
+        :key word_size: word size to use in BLAST search, int
+        :key e_value: e-value threashold for BLAST search, float
+        """
+        self.word_size:int=kwargs.get("word_size",20)
+        self.e_value: float= kwargs.get("e_value",0.00001)
     
     def db_from_file(self, file_name:str, db_dir: str) -> bool:
         self.db_file_name = file_name
@@ -30,6 +35,9 @@ class BlastRunner:
             input_str=seq_header+"\n"+sequence
         else:
             input_str=">"+seq_header+"\n"+sequence
+        return self._write_to_fasta_file(input_str, temp_dir)
+
+    def _write_to_fasta_file(self, string_to_write, temp_dir):
         #create blast DB
         if exists(f'{temp_dir}') and isfile(f'{temp_dir}'):
             raise OSError(f'Cannot create directory {temp_dir} because there is a file with such name')
@@ -37,7 +45,7 @@ class BlastRunner:
             mkdir(f'{temp_dir}')
         temp_fasta_file=temp_dir+"/temp.fasta"
         with open(temp_fasta_file, "w") as temp_fasta:
-            temp_fasta.write(input_str)
+            temp_fasta.write(string_to_write)
         return temp_fasta_file
 
 
@@ -46,11 +54,16 @@ class BlastRunner:
         self.db_from_file(fasta_file, db_dir)
         return True
 
+    def db_from_multi_sequence_string(self, sequence:str, db_dir: str) -> bool:
+        fasta_file=self._write_to_fasta_file(sequence, db_dir)
+        self.db_from_file(fasta_file, db_dir)
+        return True
+
     def run_from_file(self, query_file:str) -> List[BlastResult]:
         #quickblast: reference, query, prints query
         blast_results=subprocess.run(f'blastn -query {query_file} -task \'megablast\' \
                 -max_target_seqs 1000000000 -db {self.db_dir}/temp \
-                -num_threads 1 -evalue 1.0E-5 -word_size 20 \
+                -num_threads 1 -evalue {self.e_value} -word_size {self.word_size} \
                 -outfmt \"6 delim=  qseqid qstart qend sseqid sstart send pident evalue qseq\"'
                 , shell=True, executable="/bin/bash", stdout=subprocess.PIPE,  stderr=subprocess.PIPE)
         if blast_results.returncode==1:
@@ -79,5 +92,10 @@ class BlastRunner:
     
     def run_from_string(self,  seq_header: str, sequence: str, temp_dir: str) -> List[BlastResult]:
         fasta_file=self._seq_to_file(seq_header, sequence, temp_dir)
+        blast_hits: List[BlastResult]=self.run_from_file(fasta_file)
+        return blast_hits
+    
+    def run_from_multi_sequence_string(self,  sequence: str, temp_dir: str) -> List[BlastResult]:
+        fasta_file=self._write_to_fasta_file(sequence, temp_dir)
         blast_hits: List[BlastResult]=self.run_from_file(fasta_file)
         return blast_hits
