@@ -44,9 +44,9 @@ class SnpOptimiser:
         captured_genotypes=set([f for genotypes in interval_snps for f in genotypes["genotypes"]])
         not_captured_genotypes=[f.name for f in genotypes.genotypes if f.name not in captured_genotypes ]
         if len(not_captured_genotypes)==0:
-            print("Genotypes not captured by intervals: None")
+            print("Genotypes not captured by multigenotype intervals: None")
         else:
-            print(f'Genotypes not captured by intervals: {", ".join(not_captured_genotypes)}')
+            print(f'Genotypes not captured by multigenotype intervals: {", ".join(not_captured_genotypes)}')
         not_captured_due_to_no_snps=[f.name for f in genotypes.genotypes if len(f.defining_snp_coordinates)==0 ]
         if len(not_captured_due_to_no_snps)>0:
             print(f'Of these {", ".join(not_captured_due_to_no_snps)} do not have defining SNPs')
