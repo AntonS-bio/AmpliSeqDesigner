@@ -1,4 +1,6 @@
-# large test data
+# Test data and code
+test_data/
+test_scripts/
 test_data/vcfs/*
 test_genomes/*
 test_data/msa/*
