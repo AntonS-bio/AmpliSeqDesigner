@@ -1,0 +1,55 @@
+{
+    "max_cpus": 8,
+    "root_dir":"~/",
+    "name_stubs":[".someotherstub"],
+
+    "input_files":{
+    "reference_fasta": "~/HandyAmpliconTool/unit_test_data/valid_data/GCF_000195995.1_for_vcf.fna",
+    "repeats_bed_file": "~/HandyAmpliconTool/unit_test_data/valid_data/ref_repeats.bed",
+    "hierarchy_file": "~/HandyAmpliconTool/unit_test_data/valid_data/genotype_hierarcy.tsv",
+    "meta_data_file": "~/HandyAmpliconTool/unit_test_data/valid_data/gts.tsv"
+    },
+    
+    "input_directories":{
+    "vcf_dir": "~/HandyAmpliconTool/unit_test_data/valid_data/vcfs/",
+    "negative_genomes": "/home/lshas17/HandyAmpliconTool/unit_test_data/valid_data/negative_genomes/",
+    "use_negative_genomes_subdir": "False",
+    "temp_blast_db": "~/HandyAmpliconTool/unit_test_data/temp_data/"
+    },
+    
+    "metadata_parameters":{
+    "delimiter":"\t",
+    "genotype_column":"Genotype"
+    },
+    
+    "output_files":{
+        "output_dir":"~/HandyAmpliconTool/unit_test_data/temp_data/",
+        "genotype_snps":"genotype_snps.tsv",
+        "snps_bed":"genotype_snps.bed",
+        "genotypes_data":"test_gt_snps.pkl",
+        "species_data": "test_species_amplicons.pkl",
+        "multi_gt_intervals":"multi_gt_intervals.bed",
+        "msa_dir":"/msa/",
+        "snps_vcf":"snps.vcf"
+        },
+        
+    "analysis_parameters":{
+    "snp_specificity":99,
+    "snp_sensitivity":99.9,
+    "gts_with_few_snps": ["4.3.1.1.P1","3.1.1"],
+    "flank_len_to_check":1000,
+    "min_amplicon_length": 400,    
+    "max_blast_length_diff": 90,
+    "min_blast_identity": 60
+    },
+
+    "primers_parameters": {
+        "PRIMER_OPT_SIZE": 20,
+        "PRIMER_OPT_TM": 60.0,
+        "PRIMER_MIN_TM": 55.0,
+        "PRIMER_MAX_TM": 65.0
+    }
+    
+    }
+    
+    
