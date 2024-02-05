@@ -1,5 +1,5 @@
 import warnings
-from typing import Dict, Tuple, Set
+from typing import Dict, Tuple, Set, List
 from data_classes import SNP, Sample
 ## Consider replacing some of this with GATKs VariantsToTable
 
@@ -50,6 +50,7 @@ class VCFutilities():
         if vcf_file_type=="single_sample":
             #vcf_datatypes={"CHROM":"string","POS":int, "REF": "string", "ALT": "string", "FORMAT": "string"}
             with open(filename) as vcf_file_handle:
+                snps_to_add: List[SNP]=[]
                 for line in vcf_file_handle:
                     if line[0]=="#" or line=="\n":
                         continue
@@ -71,7 +72,8 @@ class VCFutilities():
                         existing_snps[snp]=snp
                         
                     if snp not in sample.snps:
-                        sample.snps.append(existing_snps[snp])
+                        snps_to_add.append(existing_snps[snp])
+            sample.snps.extend(snps_to_add)
 
 
 
