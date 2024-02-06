@@ -23,7 +23,7 @@ setup(name='HandyAmpliconTool',
       url='https://github.com/AntonS-bio/HandyAmpliconTool.git',
       author='Anton Spadar',
       author_email='',
-      packages=['HandyAmpliconTool'],
+      packages=['scripts'],
       scripts=[
           'scripts/run.py'
       ]
