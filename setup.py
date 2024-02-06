@@ -7,14 +7,13 @@ def readme():
         return f.read()
 
 
-# Get the program version from another file.
-__version__ = '0.0.0'
-#exec(open('kleborate/version.py').read())
+__version__ = 'v0.1-beta.4'
 
 setup(name='HandyAmpliconTool',
       version=__version__,
       description='HandyAmpliconTool',
       long_description=readme(),
+      requires-python = ">=3.10.0",
       classifiers=['Development Status :: Beta',
                    'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
                    'Programming Language :: Python :: 3',
@@ -25,7 +24,6 @@ setup(name='HandyAmpliconTool',
       author='Anton Spadar',
       author_email='',
       packages=['HandyAmpliconTool'],
-      install_requires=['biopython>=1.81', 'ncbi-blast>=2.14.1'],
       scripts=[
           'scripts/run.py'
       ]
