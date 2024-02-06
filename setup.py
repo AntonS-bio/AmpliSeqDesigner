@@ -25,7 +25,7 @@ setup(name='HandyAmpliconTool',
       author='Anton Spadar',
       author_email='',
       packages=['HandyAmpliconTool'],
-      install_requires=['biopython>=1.78', 'ncbi-blast>=2.9.0'],
+      install_requires=['biopython>=1.81', 'ncbi-blast>=2.14.1'],
       scripts=[
           'scripts/run.py'
       ]
