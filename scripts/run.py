@@ -3,17 +3,32 @@ import pickle
 from os.path import exists, expanduser
 from os import mkdir
 from shutil import which
+from sys import exit
 from data_classes import Genotype, Genotypes, InputConfiguration
 from inputs_validation import ValidateFiles
+from load_vcfs import VCFutilities
 from identify_genotype_snps import GenotypeSnpIdentifier
 import name_converters
 from snp_optimiser import SnpOptimiser
 from identify_species_snps import IdentifySpeciesSnps
 from primers_generator import PrimersGenerator
+import argparse
 
+parser = argparse.ArgumentParser(description='Generate list of SNPs that uniquely identify one or more genotypes')
+parser.add_argument('-c','--config_file', metavar='', type=str,
+                    help='Config file, see sample.json for example.', required=True)
+parser.add_argument('-m','--mode', metavar='', type=str, choices=['SNP', 'Amplicon'],
+                    help='"SNP" to only get genotype defining SNPs, "Amplicon" to also generate amplicons', required=True)
 
+try:
+    args = parser.parse_args()
+except:
+    parser.print_help()
+    exit(0)
 
-def main(self):
+run_mode=args.mode
+config_file=expanduser(args.config_file)
+def main():
 
     #Check dependencies
 
@@ -23,7 +38,7 @@ def main(self):
         raise OSError("Missing NCBI BLAST program. It's available via Conda.")
 
     #switch to argparse later
-    config_data = InputConfiguration( expanduser("~/HandyAmpliconTool/test_data/configs/2.3.1.json") )
+    config_data = InputConfiguration( config_file )
 
     #### START Input validation tests ####
     print("Validating input files")
@@ -54,7 +69,7 @@ def main(self):
         for genotype in genotypes.genotypes:
             for snp in genotype.defining_snps:
                 if snp.passes_filters:
-                    fourth_col=f'SNP:{snp.ref_base}/{snp.alt_base}/GT:{genotype.name}/SP:{snp.specificity:.1f}/SE:{snp.sensitivity:.1f}'
+                    fourth_col=f'SNP:{snp.ref_base}/{snp.alt_base}/GT:{genotype.name}/SP:{snp.specificity:.2f}/SE:{snp.sensitivity:.2f}'
                     snps_file.write("\t".join( [str(f) for f in [snp.ref_contig_id, snp.position, snp.position+1, fourth_col] ])+"\n")
 
     with open(config_data.genotypes_data, "wb") as output:
@@ -64,7 +79,9 @@ def main(self):
     with open(config_data.genotypes_data, "rb") as pickled_file:
         gt_snps: Genotypes = pickle.load(pickled_file)
 
-    #gt_snps.genotypes.append(extra_genotype)
+    with open(config_data.genotypes_data, "rb") as pickled_file:
+            gt_snps: Genotypes = pickle.load(pickled_file)
+
 
     snp_opimiser=SnpOptimiser()
     max_iterval_len=1000
@@ -82,6 +99,10 @@ def main(self):
 
     # # #### START MSA generation section ####
 
+    if run_mode!="Amplicon":
+        vcf_utils=VCFutilities()
+        vcf_utils.output_genotypes_vcf(genotypes, config_data.snps_vcf)
+        exit(0)
     snp_identifier=IdentifySpeciesSnps(ref_fasta=config_data.reference_fasta,
                                     msa_dir=config_data.msa_dir,
                                     negative_genomes_dir=config_data.negative_genomes,
@@ -99,9 +120,6 @@ def main(self):
 
     #### END MSA generation section ####
 
-
-    #### START write VCF ####
-
     with open(config_data.species_data, "rb") as pickled_file:
         species: Genotype = pickle.load(pickled_file)
 
@@ -109,6 +127,9 @@ def main(self):
         genotypes: Genotypes = pickle.load(pickled_file)
 
     genotypes.genotypes.append(species)
+
+    vcf_utils=VCFutilities()
+    vcf_utils.output_species_vcf(genotypes, config_data.snps_vcf)
 
     #### START Generate primers ####
     generator=PrimersGenerator(config_data)
@@ -123,66 +144,5 @@ def main(self):
             output_file.write(pair.to_string()+"\n")
 
 
-    # with open(config_data.snps_vcf, "w") as vcf_output_file:
-    #     #write the vcf header
-    #     vcf_output_file.write('##fileformat=VCFv4.2'+"\n")
-    #     vcf_output_file.write('##FILTER=<ID=PASS,Description="All filters passed">'+"\n")
-    #     vcf_output_file.write('##ALT=<ID=*,Description="Represents allele(s) other than observed.">'+"\n")
-
-    #     for ref_contig in set([snp.ref_contig_id for genotype in genotypes.genotypes for snp in genotype.defining_snps]):
-    #         contig_max_position=max([snp.position for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.ref_contig_id == ref_contig])
-    #         vcf_output_file.write(f'##contig=<ID={ref_contig},length={str(contig_max_position)}>'+"\n")
-    #     header_line="#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\t"
-    #     gt_columns={}
-    #     for i, gt in enumerate(genotypes.genotypes):
-    #         header_line=header_line+gt.name+"\t"
-    #         gt_columns[gt.name]=i
-    #     header_line=header_line+"NonTargetSerovar\n"
-    #     gt_columns["NonTargetSerovar"]=len(gt_columns)
-    #     vcf_output_file.write(header_line)
-
-    #     coordinates=sorted(set([coordinate for genotype in genotypes.genotypes for coordinate in genotype.defining_snp_coordinates]))
-    #     for contig_id, position in coordinates:
-    #         snps_at_coordinates=[(genotype, snp) for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.position==position and snp.ref_contig_id==contig_id]
-    #         alt_alleles=[base for base in [snp[1].alt_base for snp in snps_at_coordinates] ][0]
-    #         if len(alt_alleles)>1:
-    #             print(f'Excess alleles at pos: {str(position)} contig {contig_id}')
-    #             continue
-    #         alt_str=f'{alt_alleles}'
-    #         for genotype, snp in snps_at_coordinates:
-    #             #check that snp is in multi genotype region
-    #             if True not in set([f.snp_in_amplicon(snp) for f in species.amplicons]):
-    #                 continue
-
-    #             if snp.passes_filters:
-    #                 if genotype.name!="species":
-    #                     if genotype.get_genotype_allele(snp)==snp.alt_base:
-    #                         suffix=["1:."]*len(gt_columns)
-    #                         suffix[gt_columns[genotype.name]]="1:"+str(genotype.get_genotype_allele_depth(snp)) #0 is REF allele
-    #                     else:
-    #                         suffix=["1:."]*len(gt_columns) #set
-    #                         suffix[gt_columns[genotype.name]]="0:"+str(genotype.get_genotype_allele_depth(snp))
-    #                     vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
-    #                     suffix[gt_columns["species"]]=0
-    #                     suffix[gt_columns["NonTargetSerovar"]]=".:."
-    #                 else:
-    #                     vcf_snp_id="_".join( ["Serovar", snp.ref_contig_id ,str(snp.position+1), snp.alt_base] )
-    #                     suffix=["1:."]*len(gt_columns)
-    #                     suffix[gt_columns["NonTargetSerovar"]]="1:"+str(genotypes.genotypes[-1].get_genotype_allele_depth(snp))
-    #                     alt_str=snp.alt_base
-    #                 vcf_output_file.write("\t".join([str(f) for f in [snp.ref_contig_id,
-    #                                                                     snp.position+1,
-    #                                                                     vcf_snp_id,
-    #                                                                     snp.ref_base,
-    #                                                                     alt_str,
-    #                                                                     ".",
-    #                                                                     "PASS",
-    #                                                                     ".",
-    #                                                                     "GT:DP",
-    #                                                                     ]+suffix ]   ) +"\n" )
-
-    #### END write VCF ####
-
-
-
+main()
 

@@ -7,7 +7,7 @@ def readme():
         return f.read()
 
 
-__version__ = 'v0.1_beta.9'
+__version__ = 'v0.1_beta.10'
 
 setup(name='HandyAmpliconTool',
       version=__version__,

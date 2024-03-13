@@ -27,6 +27,7 @@ class HierarchyUtilities:
         with open(filename) as input_file:
             for i, line in enumerate(input_file):
                 values=line.strip().split("\t")
+                values=[f.strip() for f in values] #remove any accidental spaces
                 if values[0]=="":
                     raise ValueError(f'Line {i} in hierarchy file has empty first column: {line}')
                 if values[0] in self.genotype_hierarchy:
@@ -59,14 +60,16 @@ class HierarchyUtilities:
                 #for this reason, SNPs in genotype samples are not sufficient and SNPs not in genotype also have to be checked
                 #this creates potiential double counting, which needs to be checked
                 for gt_snp, gt_snp_count in snps_dict.items():
+                    if gt_snp.position==87827:
+                        a=1
                     if invert_specificity_sensitivity:
-                        specificity=1-gt_snp_count/len(gt_samples)
-                        sensitivity=non_gt_snps[gt_snp]/len(non_gt_samples)
+                        specificity=1-gt_snps[gt_snp]/len(gt_samples)
+                        sensitivity=non_gt_snps[gt_snp]/(  len(non_gt_samples) )
                         allele_depth=non_gt_snps[gt_snp]
                     else:
                         sensitivity=gt_snp_count/len(gt_samples)
                         specificity=1-non_gt_snps[gt_snp]/len(non_gt_samples)
-                        allele_depth=gt_snp_count 
+                        allele_depth=gt_snp_count
                     if sensitivity>InputConfiguration.specificity_limit and specificity>InputConfiguration.sensitivity_limit and gt_snp not in genotype.defining_snps:
                         # gt_snp not in genotype.defining_snps check for redundancy
                         snp_copy=gt_snp.copy()

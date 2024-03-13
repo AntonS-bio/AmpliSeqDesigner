@@ -70,7 +70,7 @@ class IdentifySpeciesSnps:
                             if alt_base!=target_nucleotide:
                                 if alt_base=="-" and len(bases_at_position)!=2: #case 4
                                     continue #do not output missing base if there are other nucleotides in that position
-                                snp=SNP(ref_contig_id=current_amplicon.ref_contig, ref_base=target_nucleotide, alt_base=alt_base,  position=current_amplicon.ref_start+msa_to_amplicon_coord[i])
+                                snp=SNP(ref_contig_id=current_amplicon.ref_seq.refseq_id, ref_base=target_nucleotide, alt_base=alt_base,  position=current_amplicon.ref_seq.ref_start+msa_to_amplicon_coord[i])
                                 if snp.alt_base=="-":
                                     snp.alt_base="."
                                 snp.passes_filters=True

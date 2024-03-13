@@ -32,9 +32,9 @@ class TestMsaGenenerator(unittest.TestCase):
     def test_get_fasta_files(self):
         generator=MsaGenerator(self.config_data.temp_blast_db)
         generator._get_fasta_files(self.valid_data)
-        self.assertEqual([f'{self.valid_data}/GCF_000195995.1_short.fna',
+        self.assertEqual( sorted([f'{self.valid_data}/GCF_000195995.1_short.fna',
                           f'{self.valid_data}/GCF_000195995.1_for_vcf.fna',
-                          f'{self.valid_data}/existing_primers.fasta'],generator.file_to_search)
+                          f'{self.valid_data}/existing_primers.fasta']),sorted(generator.file_to_search) )
         #self.assertEqual()
 
     def test_run_blast(self):

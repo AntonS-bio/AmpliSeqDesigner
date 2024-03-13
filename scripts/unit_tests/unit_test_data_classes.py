@@ -33,7 +33,7 @@ class TestDataClasses(unittest.TestCase):
     def test_from_parent_bed_line(self) -> None:
         amplicon=Amplicon.from_bed_line("AL513382_143N_pHCM1_120N_pHCM2\t100\t200\tTest Amplicon\n", self.config_data.reference_fasta)
         flanking_amplicon=FlankingAmplicon.from_parent_bed_line(self.config_data.reference_fasta,True,self.config_data.flank_len_to_check, amplicon)
-        self.assertTrue(flanking_amplicon.seq=="AGAGATTACGTCTGGTTGCAAGAGATCATAACAGGGGAAATTGATTGAAAATAAATATATCGCCAGCAGCACATGAACAAGTTTCGGAATGTGATCAATT")
+        self.assertTrue(flanking_amplicon.ref_seq.sequence=="AGAGATTACGTCTGGTTGCAAGAGATCATAACAGGGGAAATTGATTGAAAATAAATATATCGCCAGCAGCACATGAACAAGTTTCGGAATGTGATCAATT")
         self.assertTrue(flanking_amplicon.name=="AL513382_143N_pHCM1_120N_pHCM2_100_200_Test Amplicon_left")
 
 if __name__ == '__main__':

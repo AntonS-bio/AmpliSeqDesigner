@@ -60,10 +60,10 @@ class TestIdentifySpeciesSnps(unittest.TestCase):
                 #check that flanking regions are present and have correct coordinates
                 for other_amplicon in species_genotype.amplicons:
                     if amplicon.left_flanking_id==other_amplicon.id:
-                        self.assertEqual(amplicon.ref_start-self.config_data.flank_len_to_check,other_amplicon.ref_start)
+                        self.assertEqual(amplicon.ref_seq.ref_start-self.config_data.flank_len_to_check,other_amplicon.ref_seq.ref_start)
                         has_left=True
                     elif amplicon.right_flanking_id==other_amplicon.id:
-                        self.assertEqual(amplicon.ref_start+self.config_data.flank_len_to_check,other_amplicon.ref_end)
+                        self.assertEqual(amplicon.ref_seq.ref_start+self.config_data.flank_len_to_check,other_amplicon.ref_seq.ref_end)
                         has_right=True
                 self.assertTrue(has_left and has_right)
     

@@ -187,15 +187,63 @@ class Sample:
     def id(self) -> str:
         return self._uuid
 
+
+class ReferenceSequence:
+    def __init__(self, contig_id, seq_start, seq_end, sequence) -> None:
+        self._refseq_id=contig_id
+        self._ref_start=seq_start
+        self._ref_end=seq_end
+        self._sequence=sequence
+
+    @classmethod
+    def from_bed_line(cls, bed_line:str, ref_fasta_file: str):
+        """Constructor using bedfile lines. 
+        :param bed_line: String from bedfile, if the line has fourth column, this will be included in amplicon name
+        :type bed_file: str
+
+        :param ref_fasta_file: Path to fasta file on which the amplicon is based
+        :type ref_fasta_file: str
+        """
+        bed_line_values = bed_line.strip().split("\t")
+        contig_id, seq_start, seq_end=bed_line_values[0:3]
+        seq_start=int(seq_start)
+        seq_end=int(seq_end)
+        with open(ref_fasta_file) as fasta_input:
+            for record in SeqIO.parse(fasta_input,"fasta"):
+                if record.id==contig_id:
+                    if seq_end>len(str(record.seq)):
+                        raise ValueError(f'Contig {contig_id} is shorter, {len(str(record.seq))}nt, than end position in the bedfile: {seq_end}')
+                    new_refseq=cls(contig_id, seq_start, seq_end, str(record.seq[seq_start:seq_end]))
+                    return new_refseq
+        raise ValueError(f'Contig {contig_id} is not found in fasta file: {ref_fasta_file}')
+    
+    @property
+    def refseq_id(self) -> str:
+        return self._refseq_id
+
+    @property
+    def ref_start(self) -> int:
+        return self._ref_start
+
+    @property
+    def ref_end(self) -> int:
+        return self._ref_end
+    
+    @property
+    def sequence(self) -> str:
+        return self._sequence
+
+
 class Amplicon:
     def __init__(self, name: str, seq: str) -> None:
         self._name: str=name
-        self.seq: str=seq
+        self._seq: str=seq
         self._snps:List[SNP]=[]
         self._left_flanking_id=""
         self._right_flanking_id=""
         self._has_homologues=False
         self._uuid=str(uuid.uuid4())
+        self._has_reference=False #indicates if the amplicon has associated reference sequence
 
     @classmethod
     def from_bed_line(cls, bed_line:str, ref_fasta_file: str):
@@ -213,19 +261,75 @@ class Amplicon:
             name='_'.join( [str(f) for f in bed_line_values[0:4] ] )
         else:
             name='_'.join( [str(f) for f in bed_line_values[0:3] ] )
-        ampl_start=int(ampl_start)
-        ampl_end=int(ampl_end)
-        with open(ref_fasta_file) as fasta_input:
-            for record in SeqIO.parse(fasta_input,"fasta"):
-                if record.id==ampl_chr:
-                    if ampl_end>len(str(record.seq)):
-                        raise ValueError(f'Contig {ampl_chr} is shorter, {len(str(record.seq))}nt, than end position of the amplicon: {ampl_end}')
-                    new_amplicon=cls(name, str(record.seq[ampl_start:ampl_end]))
-                    new_amplicon.ref_contig=record.id
-                    new_amplicon.ref_start=ampl_start
-                    new_amplicon.ref_end=ampl_end
-                    return new_amplicon
+
+        new_refseq=ReferenceSequence.from_bed_line(bed_line,ref_fasta_file)
+        new_amplicon=cls(name, new_refseq.sequence)
+        new_amplicon.ref_seq=new_refseq
+        # ampl_start=int(ampl_start)
+        # ampl_end=int(ampl_end)
+        # with open(ref_fasta_file) as fasta_input:
+        #     for record in SeqIO.parse(fasta_input,"fasta"):
+        #         if record.id==ampl_chr:
+        #             if ampl_end>len(str(record.seq)):
+        #                 raise ValueError(f'Contig {ampl_chr} is shorter, {len(str(record.seq))}nt, than end position of the amplicon: {ampl_end}')
+        #             new_amplicon=cls(name, str(record.seq[ampl_start:ampl_end]))
+        #             new_amplicon.ref_contig=record.id
+        #             new_amplicon.ref_start=ampl_start
+        #             new_amplicon.ref_end=ampl_end
+        return new_amplicon
         raise ValueError(f'Contig {ampl_chr} is not found in fasta file: {ref_fasta_file}')
+
+    @property
+    def ref_seq(self) -> ReferenceSequence:
+        if not self._has_reference:
+            raise ValueError(f'Amplicon {self._name} has no reference')
+        return self._ref_seq
+
+    @ref_seq.setter
+    def ref_seq(self, value: ReferenceSequence):
+        self._has_reference=True
+        self._ref_seq=value
+
+    @property
+    def has_reference(self) -> bool:
+        return self._has_reference
+
+    @property
+    def ref_contig(self) -> str:
+        if not self._has_reference:
+            raise ValueError(f'Amplicon {self._name} has no reference')
+        return self._ref_seq.refseq_id
+
+    @property
+    def seq(self) -> str:
+        if self._has_reference:
+            return self.ref_seq.sequence
+        else:
+            return self._seq
+
+    # @ref_contig.setter
+    # def ref_contig(self, value: str):
+    #     self._ref_contig = value
+
+    # @property
+    # def ref_start(self) -> int:
+    #     if not self._has_reference:
+    #         raise ValueError(f'Amplicon {self._name} has no reference')
+    #     return self._ref_start
+
+    # @ref_start.setter
+    # def ref_start(self, value: int):
+    #     self._ref_start = int(value)
+
+    # @property
+    # def ref_end(self) -> int:
+    #     if not self._has_reference:
+    #         raise ValueError(f'Amplicon {self._name} has no reference')
+    #     return self._ref_end
+
+    # @ref_end.setter
+    # def ref_end(self, value: int):
+    #     self._ref_end = int(value)
 
     @property
     def left_flanking_id(self) -> str:
@@ -247,7 +351,6 @@ class Amplicon:
     def has_flanking(self) -> bool:
         return self._left_flanking_id!="" and self._right_flanking_id!=""
 
-
     @property
     def name(self) -> str:
         return self._name
@@ -268,40 +371,16 @@ class Amplicon:
     def has_homologues(self, value: bool):
         self._has_homologues = value
 
-    @property
-    def ref_contig(self) -> str:
-        return self._ref_contig
-
-    @ref_contig.setter
-    def ref_contig(self, value: str):
-        self._ref_contig = value
-
-    @property
-    def ref_start(self) -> int:
-        return self._ref_start
-
-    @ref_start.setter
-    def ref_start(self, value: int):
-        self._ref_start = int(value)
-
-    @property
-    def ref_end(self) -> int:
-        return self._ref_end
-
-    @ref_end.setter
-    def ref_end(self, value: int):
-        self._ref_end = int(value)
-
     def snp_in_amplicon(self, snp:SNP) -> bool:
         if snp.ref_contig_id==self.ref_contig and \
-        snp.position>=self.ref_start and snp.position<=self.ref_end:
+        snp.position>=self.ref_seq.ref_start and snp.position<=self.ref_seq.ref_end:
             return True
         else:
             return False
         
     def coord_in_amplicon(self, coordinates:Tuple[str, int]) -> bool:
         if coordinates[0]==self.ref_contig and \
-        coordinates[1]>=self.ref_start and coordinates[1]<=self.ref_end:
+        coordinates[1]>=self.ref_seq.ref_start and coordinates[1]<=self.ref_seq.ref_end:
             return True
         else:
             return False
@@ -369,24 +448,26 @@ class FlankingAmplicon(Amplicon):
         """
         name = parent._name+"_left" if is_left else parent._name+"_right"
         for record in SeqIO.parse(ref_fasta_file,"fasta"):
-            if record.id==parent.ref_contig:
-                    new_amplicon=cls(name, "", parent, is_left, max_len )
-                    ampl_start, ampl_end = new_amplicon._calculate_flanking_coordinates(record)
-                    new_amplicon.seq=str(record.seq[ampl_start:ampl_end])
-                    new_amplicon.ref_contig=record.id
-                    new_amplicon.ref_start=ampl_start
-                    new_amplicon.ref_end=ampl_end
-                    return new_amplicon
-        raise ValueError(f'Contig {parent.ref_contig} is not found in fasta file: {ref_fasta_file}')
+            if record.id==parent.ref_seq.refseq_id:
+                new_amplicon=cls(name, "", parent, is_left, max_len )
+                ampl_start, ampl_end = new_amplicon._calculate_flanking_coordinates(record)
+        bed_line=parent.ref_seq.refseq_id+"\t"+str(ampl_start)+"\t"+str(ampl_end)
+        new_amplicon.ref_seq=ReferenceSequence.from_bed_line(bed_line, ref_fasta_file)
+                    # new_amplicon.seq=str(record.seq[ampl_start:ampl_end])
+                    # new_amplicon.refseq_id=record.id
+                    # new_amplicon.ref_start=ampl_start
+                    # new_amplicon.ref_end=ampl_end
+        return new_amplicon
+        #raise ValueError(f'Contig {parent.refseq_id} is not found in fasta file: {ref_fasta_file}')
 
     def _calculate_flanking_coordinates(self, record: SeqIO.SeqRecord) -> Tuple[int,int]:
         """Calculates the strat and end of the flanking amplicon sequences based on amplicon length
         and maximum permitted lenght of the amplicon
         """
         if self.is_left:
-            return (max(self.parent.ref_start-self.max_len,0),self.parent.ref_start)
+            return (max(self.parent.ref_seq.ref_start-self.max_len,0),self.parent.ref_seq.ref_start)
         else:
-            return (self.parent.ref_end , min(self.parent.ref_end+self.max_len,len(record.seq)))
+            return (self.parent.ref_seq.ref_end , min(self.parent.ref_seq.ref_end+self.max_len,len(record.seq)))
 
 class Genotype:
 
@@ -702,7 +783,6 @@ class PrimerPair:
                                     self.reverse.seq,
                                     '{0:.2f}'.format(self.reverse.t_m),
                                     '{0:.2f}'.format(self.reverse.g_c)]])
-
 
 class Genotypes:
     def __init__(self, **kwargs) -> None:
