@@ -5,11 +5,106 @@ import subprocess
 from typing import List, Dict, Tuple
 from run_blast import BlastRunner
 from multiprocessing import Pool
-import pandas as pd
-#from Bio import SeqIO
+import numpy as np
+import numpy.typing as npt
 from Bio.Seq import Seq
 from data_classes import Amplicon, BlastResult, InputConfiguration
 from tqdm import tqdm
+
+class MergedAmplicons:
+    """
+    Class designed to merge and demerge multiple overlapping amplicons into fewer
+    e.g. ____________
+         _______
+         ____
+    Only amplicons which are complete subset of another are merged, because 
+    otherwise the amplicon length may become very long
+    The merge reduces the number of redundant BLAST searches and 
+    MSA alignments.
+    """
+
+    def __init__(self) -> None:
+        self._source_amplicons: List[Amplicon] = []
+        self._source_to_destination: Dict[str, Amplicon]
+        self._destination_amplicons: List[Amplicon] = []
+
+    @property
+    def source_amplicons(self) -> List[Amplicon]:
+        return self._source_amplicons
+    
+    @property
+    def destination_amplicons(self) -> List[Amplicon]:
+        return self._destination_amplicons
+   
+    def get_destination_amplicon(self, amplicon: Amplicon) -> Amplicon:
+        if amplicon.id not in self._source_to_destination:
+            raise ValueError(f'Amplicon {amplicon.name} not present in merged amplicons')
+        return self._source_to_destination[amplicon.id]
+
+    def merge_amplicons(self, amplicons: List[Amplicon]) -> List[Amplicon]:
+        """Identifies ovelapping amplicons, checks if one is a subset of another
+        and keeps the longer amplicon
+
+        :param amplicon: list of amplicons to merge
+        :type amplicon: List[Amplicon]
+        """
+        #sorting guarantees
+        amplicons=sorted(amplicons, key=lambda x: x.len, reverse=True)
+        self._source_to_destination={}
+
+        for i, first_amplicon in enumerate(amplicons): #Rewrite later 
+            for second_amplicon in amplicons[i+1:]:
+                if  second_amplicon.id not in self._source_to_destination.keys() and \
+                    first_amplicon.coord_in_amplicon( (second_amplicon.ref_contig, second_amplicon.ref_seq.ref_start) ) and \
+                    first_amplicon.coord_in_amplicon( (second_amplicon.ref_contig, second_amplicon.ref_seq.ref_end) ):
+                        self._source_to_destination[second_amplicon.id] = first_amplicon.id
+        #return those amplicons that are not a subset of another amplicon
+        self._destination_amplicons = [f for f in amplicons if f.id not in self._source_to_destination.keys()]
+        return self._destination_amplicons
+
+class MsaResult:
+    """Result of MSA alignment consiting of two parts:
+    Index of sequences IDs and MSA sequences
+    """
+    def __init__(self, amplicon_id: str, ids: List[str], sequences:List[str]) -> None:
+        self._amplicon_id=amplicon_id
+        self._ids: List[str]=ids
+        self._sequences: npt.NDArray= np.asarray([ self._to_numeric( list(f.upper()) ) for f in sequences ], dtype=int)
+
+    def _to_numeric(self, sequence:List[str]) -> List[int]:
+        return [ InputConfiguration.BASE_DIC[f] if f in InputConfiguration.BASE_DIC else InputConfiguration.BASE_DIC["N"] for f in sequence ]
+    
+    def _to_char(self, sequence: List[int]) -> str:
+        return "".join( [ InputConfiguration.NUMBER_DIC[f] for f in sequence ] )
+
+    @property
+    def amplicon_id(self) -> str:
+        return self._amplicon_id
+
+    @property
+    def seq_ids(self) -> List[str]:
+        return self._ids
+
+    @property
+    def matrix(self) -> npt.NDArray:
+        return self._sequences
+
+    def _values_at_col(self, index:int) -> npt.NDArray:
+        if index < self._sequences.shape[1]:
+            return self._sequences[:,index]
+        else:
+            raise ValueError(f'Index value {index} exceeds the number of MSA columns')
+
+    def nucleotides_at_col(self, index:int) -> List[str]:
+        numeric_values=self._values_at_col(index)
+        return  [ InputConfiguration.NUMBER_DIC[f] for f in numeric_values ]
+
+    def row_to_seq(self, index: int) -> str:
+        if index < self._sequences.shape[0]:
+            return self._to_char(self._sequences[index,:])
+        else:
+            raise ValueError(f'Index value {index} exceeds the number of MSA rows')
+
 
 class MsaGenerator:
     #use_sub_dirs=False
@@ -29,7 +124,7 @@ class MsaGenerator:
         else:
             self.file_to_search = [dir_to_search+"/"+f for f in listdir(dir_to_search) if isfile(join(dir_to_search, f)) and (splitext(f)[-1]==".fasta" or splitext(f)[-1]==".fna")]
 
-    def generate_msa(self, amplicons:List[Amplicon], genomes_dir:str) -> Dict[str, pd.DataFrame]:
+    def generate_msa(self, amplicons:List[Amplicon], genomes_dir:str) -> Dict[str, MsaResult]:
         """Takes list of Amplicons and directory of genomes
         blasts amplicon sequences against all genomes in directory 
         and creates multiple sequences alignment file of blast results
@@ -45,11 +140,15 @@ class MsaGenerator:
             else:
                 raise ValueError(f'When looking for genomes to BLAST against, no .fna or .fasta files found in {genomes_dir}. Did you mean to include sub-directories?')
 
-        blast_results_raw=self._run_blast(amplicons, self.file_to_search)
-        blast_results=self._process_blast_results(blast_results_raw, amplicons)
-        return self._align_blast_results(blast_results, amplicons)
+        print("Merging amplicons")
+        merged_amplicons=MergedAmplicons()
+        merged_amplicons.merge_amplicons(amplicons)
+        blast_results_raw=self._run_blast( merged_amplicons.destination_amplicons, self.file_to_search )
+        blast_results=self._process_blast_results(blast_results_raw, merged_amplicons.destination_amplicons)
+        msa_dfs: List[MsaResult] = self._align_blast_results(blast_results, merged_amplicons.destination_amplicons)
+        return msa_dfs
 
-    def _align_blast_results(self, blast_results: Dict[str, List[BlastResult]], amplicons: List[Amplicon]):
+    def _align_blast_results(self, blast_results: Dict[str, List[BlastResult]], amplicons: List[Amplicon]) -> List[MsaResult]:
         if __name__ == 'generate_msa':
             print("Generating MSAs")
             pool = Pool(processes= InputConfiguration.cpu_threads )
@@ -62,14 +161,15 @@ class MsaGenerator:
 
             msa_results = list(tqdm( pool.imap(func=self._align_results_helper, iterable=aligner_inputs), total=len(aligner_inputs) ))
             pool.close()
-            msa_dfs: Dict[str, pd.DataFrame]={}
-            for amplicon_id, amplicon_blast_results in blast_results.items(): #this is a shortcut and a more robust solution is required in longer-term
-                for result in msa_results:
-                    if amplicon_id in result:
-                        msa_dfs[amplicon_id]=self._msa_to_dataframe(result)
-                        break
+            return msa_results
+            # msa_dfs: Dict[str, pd.DataFrame]={}
+            # for amplicon_id, amplicon_blast_results in blast_results.items(): #this is a shortcut and a more robust solution is required in longer-term
+            #     for result in msa_results:
+            #         if amplicon_id in result:
+            #             msa_dfs[amplicon_id]=self._msa_to_dataframe(result)
+            #             break
 
-            return msa_dfs
+            # return msa_dfs
 
     def _run_blast(self, subject_sequences: List[Amplicon], query_files: List[str]) -> List[BlastResult] :
         """Runs blast against a single file at a time using Pool
@@ -114,7 +214,7 @@ class MsaGenerator:
         del blast_resuls
         return valid_amplicon_hits
 
-    def _align_results_helper(self, values:List):
+    def _align_results_helper(self, values:List) -> MsaResult:
         """Take valid blast results and create a file of unalligned hits
         use MSA tool (here Mafft) to align them
         this might be replaced later, but at the moment this is simpler approach
@@ -138,7 +238,7 @@ class MsaGenerator:
         if outcome.returncode==2 or outcome.returncode==1:
             raise OSError(f'Error generating BLAST database: {outcome.stderr}')
 
-        msa_results: Dict[str,str]={}
+        # msa_results: Dict[str,str]={}
         ids=[]
         sequences=[]
         for line in outcome.stdout.decode().strip().split("\n"):
@@ -147,13 +247,15 @@ class MsaGenerator:
                 sequences.append("")
             else:
                 sequences[-1]=sequences[-1]+line
-        msa_results=dict(  [(key, value) for key, value in zip(ids, sequences)  ] )
-        return msa_results
 
-    def _msa_to_dataframe(self, msa_result: Dict[str, str]) -> pd.DataFrame:
-        indices=list(msa_result.keys())
-        columns=len(msa_result[indices[0]])
-        msa_df=pd.DataFrame(index=indices, columns=['pos_'+str(f) for f in range(0,columns)], dtype=str)
-        for seq_id, sequence in msa_result.items():
-            msa_df.loc[seq_id]=list(str(sequence).upper())
-        return msa_df
+        return MsaResult( amplicon_id, ids, sequences)
+
+    # def _msa_to_dataframe(self, msa_result: Dict[str, str]) -> np.ndarray:
+    #     indices=list(msa_result.keys())
+    #     columns=len(msa_result[indices[0]])
+    #     result=np.zeros( (len(indices), len(columns))  )
+    #     #msa_df=pd.DataFrame(index=indices, columns=['pos_'+str(f) for f in range(0,columns)], dtype=str)
+    #     for seq_id, sequence in msa_result.items():
+    #         result[]
+    #         msa_df.loc[seq_id]=list(str(sequence).upper())
+    #     return msa_df

@@ -1,4 +1,4 @@
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Set
 import pandas as pd
 import uuid
 from io import TextIOWrapper
@@ -7,6 +7,8 @@ import copy
 from json import load
 from os.path import exists, expanduser
 from multiprocessing import cpu_count
+
+
 
 class SNP:
     def __init__(self, **kwargs) -> None:
@@ -126,7 +128,7 @@ class SNP:
         sep=kwargs.get("sep","\t")
         name=f'{self._ref_base}/{self.alt_base}'
         if self._is_species_snp:
-            name=name+"/species"
+            name=name+"/"+InputConfiguration.SPECIES_NAME
         elif self._is_genotype_snp:
             name=name+"/genotype"
 
@@ -187,8 +189,9 @@ class Sample:
     def id(self) -> str:
         return self._uuid
 
-
 class ReferenceSequence:
+
+    whole_reference: Dict[str, str] ={}
     def __init__(self, contig_id, seq_start, seq_end, sequence) -> None:
         self._refseq_id=contig_id
         self._ref_start=seq_start
@@ -196,7 +199,7 @@ class ReferenceSequence:
         self._sequence=sequence
 
     @classmethod
-    def from_bed_line(cls, bed_line:str, ref_fasta_file: str):
+    def from_bed_line(cls, bed_line:str):
         """Constructor using bedfile lines. 
         :param bed_line: String from bedfile, if the line has fourth column, this will be included in amplicon name
         :type bed_file: str
@@ -208,14 +211,17 @@ class ReferenceSequence:
         contig_id, seq_start, seq_end=bed_line_values[0:3]
         seq_start=int(seq_start)
         seq_end=int(seq_end)
-        with open(ref_fasta_file) as fasta_input:
-            for record in SeqIO.parse(fasta_input,"fasta"):
-                if record.id==contig_id:
-                    if seq_end>len(str(record.seq)):
-                        raise ValueError(f'Contig {contig_id} is shorter, {len(str(record.seq))}nt, than end position in the bedfile: {seq_end}')
-                    new_refseq=cls(contig_id, seq_start, seq_end, str(record.seq[seq_start:seq_end]))
-                    return new_refseq
-        raise ValueError(f'Contig {contig_id} is not found in fasta file: {ref_fasta_file}')
+        if len(ReferenceSequence.whole_reference)==0:
+            raise ValueError("Whole refernce has not been loaded")
+        if contig_id not in ReferenceSequence.whole_reference:
+            raise ValueError(f'Contig {contig_id} is not found in reference file')
+
+        if len(ReferenceSequence.whole_reference[contig_id]) < seq_end:
+            raise ValueError(f'Contig {contig_id} is shorter, {len(ReferenceSequence.whole_reference[contig_id])}\
+                             nt, than end position in the bedfile: {seq_end}')
+        new_refseq=cls(contig_id, seq_start, seq_end, ReferenceSequence.whole_reference[contig_id][seq_start:seq_end] )
+        return new_refseq
+        
     
     @property
     def refseq_id(self) -> str:
@@ -233,7 +239,6 @@ class ReferenceSequence:
     def sequence(self) -> str:
         return self._sequence
 
-
 class Amplicon:
     def __init__(self, name: str, seq: str) -> None:
         self._name: str=name
@@ -246,13 +251,13 @@ class Amplicon:
         self._has_reference=False #indicates if the amplicon has associated reference sequence
 
     @classmethod
-    def from_bed_line(cls, bed_line:str, ref_fasta_file: str):
+    def from_bed_line(cls, bed_line:str, ref_seq: ReferenceSequence):
         """Constructor using bedfile lines. 
         :param bed_line: String from bedfile, if the line has fourth column, this will be included in amplicon name
         :type bed_file: str
 
-        :param ref_fasta_file: Path to fasta file on which the amplicon is based
-        :type ref_fasta_file: str
+        :param fasta_contigs: Dictionary of contig IDs and corresponding sequences
+        :type fasta_contigs: str
 
         """
         bed_line_values = bed_line.strip().split("\t")
@@ -262,22 +267,11 @@ class Amplicon:
         else:
             name='_'.join( [str(f) for f in bed_line_values[0:3] ] )
 
-        new_refseq=ReferenceSequence.from_bed_line(bed_line,ref_fasta_file)
+        new_refseq=ReferenceSequence.from_bed_line(bed_line)
         new_amplicon=cls(name, new_refseq.sequence)
         new_amplicon.ref_seq=new_refseq
-        # ampl_start=int(ampl_start)
-        # ampl_end=int(ampl_end)
-        # with open(ref_fasta_file) as fasta_input:
-        #     for record in SeqIO.parse(fasta_input,"fasta"):
-        #         if record.id==ampl_chr:
-        #             if ampl_end>len(str(record.seq)):
-        #                 raise ValueError(f'Contig {ampl_chr} is shorter, {len(str(record.seq))}nt, than end position of the amplicon: {ampl_end}')
-        #             new_amplicon=cls(name, str(record.seq[ampl_start:ampl_end]))
-        #             new_amplicon.ref_contig=record.id
-        #             new_amplicon.ref_start=ampl_start
-        #             new_amplicon.ref_end=ampl_end
         return new_amplicon
-        raise ValueError(f'Contig {ampl_chr} is not found in fasta file: {ref_fasta_file}')
+
 
     @property
     def ref_seq(self) -> ReferenceSequence:
@@ -306,30 +300,6 @@ class Amplicon:
             return self.ref_seq.sequence
         else:
             return self._seq
-
-    # @ref_contig.setter
-    # def ref_contig(self, value: str):
-    #     self._ref_contig = value
-
-    # @property
-    # def ref_start(self) -> int:
-    #     if not self._has_reference:
-    #         raise ValueError(f'Amplicon {self._name} has no reference')
-    #     return self._ref_start
-
-    # @ref_start.setter
-    # def ref_start(self, value: int):
-    #     self._ref_start = int(value)
-
-    # @property
-    # def ref_end(self) -> int:
-    #     if not self._has_reference:
-    #         raise ValueError(f'Amplicon {self._name} has no reference')
-    #     return self._ref_end
-
-    # @ref_end.setter
-    # def ref_end(self, value: int):
-    #     self._ref_end = int(value)
 
     @property
     def left_flanking_id(self) -> str:
@@ -447,27 +417,20 @@ class FlankingAmplicon(Amplicon):
         :type parent: Amplicon
         """
         name = parent._name+"_left" if is_left else parent._name+"_right"
-        for record in SeqIO.parse(ref_fasta_file,"fasta"):
-            if record.id==parent.ref_seq.refseq_id:
-                new_amplicon=cls(name, "", parent, is_left, max_len )
-                ampl_start, ampl_end = new_amplicon._calculate_flanking_coordinates(record)
+        new_amplicon=cls(name, "", parent, is_left, max_len )
+        ampl_start, ampl_end = new_amplicon._calculate_flanking_coordinates(ReferenceSequence.whole_reference[parent.ref_contig])
         bed_line=parent.ref_seq.refseq_id+"\t"+str(ampl_start)+"\t"+str(ampl_end)
-        new_amplicon.ref_seq=ReferenceSequence.from_bed_line(bed_line, ref_fasta_file)
-                    # new_amplicon.seq=str(record.seq[ampl_start:ampl_end])
-                    # new_amplicon.refseq_id=record.id
-                    # new_amplicon.ref_start=ampl_start
-                    # new_amplicon.ref_end=ampl_end
+        new_amplicon.ref_seq=ReferenceSequence.from_bed_line(bed_line)
         return new_amplicon
-        #raise ValueError(f'Contig {parent.refseq_id} is not found in fasta file: {ref_fasta_file}')
 
-    def _calculate_flanking_coordinates(self, record: SeqIO.SeqRecord) -> Tuple[int,int]:
+    def _calculate_flanking_coordinates(self, record: str) -> Tuple[int,int]:
         """Calculates the strat and end of the flanking amplicon sequences based on amplicon length
         and maximum permitted lenght of the amplicon
         """
         if self.is_left:
             return (max(self.parent.ref_seq.ref_start-self.max_len,0),self.parent.ref_seq.ref_start)
         else:
-            return (self.parent.ref_seq.ref_end , min(self.parent.ref_seq.ref_end+self.max_len,len(record.seq)))
+            return (self.parent.ref_seq.ref_end , min(self.parent.ref_seq.ref_end+self.max_len,len(record)))
 
 class Genotype:
 
@@ -701,13 +664,13 @@ class Primer:
         return hash( (self.seq, self.ref_start, self.ref_end) )
 
 class PrimerPair:
-    def __init__(self, name: str, forward: Primer, reverse: Primer) -> None:
-        self._name=name
+    def __init__(self, name_suffix: str, forward: Primer, reverse: Primer) -> None:
+        self._name_suffix=name_suffix
         self._uuid=str(uuid.uuid4())
         self._forward=forward
         self._reverse=reverse
-        self.ref_contig="Unknown"
-        self.targets: List[str]=[]
+        self._ref_contig="Unknown"
+        self._targets: Set[str]=set()
 
     @property
     def forward(self) -> Primer:
@@ -735,12 +698,12 @@ class PrimerPair:
         self._penalty = float(value)
 
     @property
-    def targets(self) -> List[SNP]:
+    def targets(self) -> Set[str]:
         return self._targets
     
     @targets.setter
-    def targets(self, value: List[SNP]):
-        self._targets = [f for f in value]
+    def targets(self, value: Set[str]):
+        self._targets.update( value ) 
 
     @property
     def primers(self) -> List[Primer]:
@@ -748,17 +711,11 @@ class PrimerPair:
 
     @property
     def name(self) -> str:
-        return self._name
+        return "/".join([f for f in self.targets])+self._name_suffix
 
     @property
     def uuid(self) -> str:
         return self._uuid
-
-    @property
-    def value(self) -> str:
-        return '\t'.join([str(f) for f in [self.name,self.forward.ref_start, self.reverse.ref_end,
-                          self.length, "NA", "NA", self.forward.seq, self.forward.t_m,
-                          self.reverse.seq, self.reverse.t_m]] )
 
     @property
     def length(self) -> int:
@@ -806,12 +763,11 @@ class Genotypes:
             if genotype.name==genotype_name:
                 return genotype
 
-
-    def all_snps_coord_sorted(self) -> List[Tuple[str, int]]:
+    def all_snps_coord_sorted(self) -> List[SNP]:
         """Returns a list of unique contig + position pairs 
         sorted by contig and position
         """
-        unique_contig_pos: List[Tuple[str, int]]=list(set([snp.coordinate for snps in self.genotypes for snp in snps.defining_snps]))
+        unique_contig_pos: List[SNP]=list(set([snp for snps in self.genotypes for snp in snps.defining_snps]))
         unique_contig_pos=sorted(unique_contig_pos, key=lambda x: x)
         return unique_contig_pos
 
@@ -822,21 +778,35 @@ class Genotypes:
         """
         if len(self._genotypes)==0:
             raise ValueError("The object has no genotypes in it.")
-        unique_contig_pos: List[Tuple[str, int]]=self.all_snps_coord_sorted()
+        unique_contig_pos: List[SNP]=self.all_snps_coord_sorted()
         gts: List[str]=[f.name for f in self.genotypes]
         output_df: pd.DataFrame=pd.DataFrame(columns=["Contig","Position"]+gts, index=range(0,len(unique_contig_pos))).fillna(False)
-        output_df["Contig"]=[f[0] for f in unique_contig_pos]
-        output_df["Position"]=[f[1] for f in unique_contig_pos]
+        output_df["Contig"]=[f.ref_contig_id for f in unique_contig_pos]
+        output_df["Position"]=[f.position for f in unique_contig_pos]
         for gt in self.genotypes:
             for snp in gt.defining_snps:
-                index=unique_contig_pos.index((snp.ref_contig_id, snp.position))
+                index=unique_contig_pos.index(snp)
                 output_df.loc[index, gt.name]=snp.passes_filters
         return output_df
 
+    def genotypes_with_snp(self, snp: SNP) -> List[Genotype]:
+        result: List[Genotype] = []
+        for genotype in self._genotypes:
+            if snp in genotype.defining_snps:
+                result.append(genotype)
+        return result
+
+    def get_duplicate_snps(self) -> List[SNP]:
+        pass
+
 class InputConfiguration:
 
+    BASE_DIC={"A":1,"C":2,"G":3,"T":4,"N":5,"-":0}
+    SPECIES_NAME="species"
+    NUMBER_DIC=dict([ (value, key) for key,value in BASE_DIC.items() ])
     cpu_threads=1
     flank_len_to_check=-1 #this is intentional to avoid hiding this parameters,
+    max_amplicon_len=-1
     max_blast_length_diff=-1 #they must be defined in config file
     min_blast_identity=-1
     use_negative_genomes_subdir=False
@@ -851,6 +821,8 @@ class InputConfiguration:
                 self._config_data = load(config_file)
                 InputConfiguration.cpu_threads=min(  max(cpu_count()-1,1) , self._config_data["max_cpus"] )
                 InputConfiguration.flank_len_to_check=self._config_data["analysis_parameters"]["flank_len_to_check"]
+                InputConfiguration.max_matching_negative_genomes=self._config_data["analysis_parameters"]["max_matching_negative_genomes"]
+                InputConfiguration.max_amplicon_len=InputConfiguration.flank_len_to_check*2
                 InputConfiguration.max_blast_length_diff=self._config_data["analysis_parameters"]["max_blast_length_diff"]
                 InputConfiguration.min_blast_identity=self._config_data["analysis_parameters"]["min_blast_identity"]
                 InputConfiguration.use_negative_genomes_subdir=str.lower(self._config_data["input_directories"]["use_negative_genomes_subdir"])=="true"
@@ -858,19 +830,21 @@ class InputConfiguration:
                 InputConfiguration.specificity_limit=self._config_data["analysis_parameters"]["snp_specificity"]/100
                 InputConfiguration.sensitivity_limit=self._config_data["analysis_parameters"]["snp_sensitivity"]/100
                 InputConfiguration.min_amplicon_length=self._config_data["analysis_parameters"]["min_amplicon_length"]
+                self._load_whole_reference()
         except IOError as error:
-            if not exists(config_file):
+            if not exists(file_name):
                 raise IOError(f'Config file {config_file} does not exist') from error
             else:
                 raise IOError(f'Error loading file {config_file}. It exits, but cannot be processed.') from error
-        
+            
+    
+    def _load_whole_reference(self):
+        for record in SeqIO.parse(self.reference_fasta,"fasta"):
+            ReferenceSequence.whole_reference[record.id]=str(record.seq)
+
     @property
     def config_data(self) -> Dict:
         return self._config_data
-
-    @property
-    def root_dir(self) -> str:
-        return expanduser(self._config_data["root_dir"])
 
     @property
     def name_stubs(self) -> str:
@@ -959,5 +933,9 @@ class InputConfiguration:
         return self.output_dir+self._config_data["output_files"]["msa_dir"]
     
     @property
-    def snps_vcf(self) -> str:
-        return self.output_dir+self._config_data["output_files"]["snps_vcf"]
+    def gt_snps_vcf(self) -> str:
+        return self.output_dir+self._config_data["output_files"]["genoptype_snps_vcf"]
+    
+    @property
+    def gt_species_snps_vcf(self) -> str:
+        return self.output_dir+self._config_data["output_files"]["gt_and_species_snps_vcf"]

@@ -60,7 +60,7 @@ class HierarchyUtilities:
                 #for this reason, SNPs in genotype samples are not sufficient and SNPs not in genotype also have to be checked
                 #this creates potiential double counting, which needs to be checked
                 for gt_snp, gt_snp_count in snps_dict.items():
-                    if gt_snp.position==87827:
+                    if gt_snp.position==16879:
                         a=1
                     if invert_specificity_sensitivity:
                         specificity=1-gt_snps[gt_snp]/len(gt_samples)
