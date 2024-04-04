@@ -1,14 +1,15 @@
 import warnings
 from typing import Dict, Tuple, Set, List
-from data_classes import SNP, Sample, Genotypes, Genotype
+from data_classes import SNP, Sample, Genotypes, Genotype, InputConfiguration
 from io import TextIOWrapper
 ## Consider replacing some of this with GATKs VariantsToTable
 
    
 class VCFutilities():
 
+    repeat_coordinates: Set[ Tuple[str, int] ]=set()
+
     def __init__(self) -> None:
-        self._repeat_coordinates=set()
         pass
 
 
@@ -86,14 +87,46 @@ class VCFutilities():
 
 
     def load_repeat_regions(self, bed_file: str) -> bool:
-        self._repeat_coordinates: Set[ Tuple[str, int] ] =set()
+        VCFutilities.repeat_coordinates.clear()
         if bed_file=="":
             return True
         with open(bed_file) as bed_data:
             for line in bed_data:
                 values=line.strip().split("\t")
-                self._repeat_coordinates.update( [(values[0],f) for f in range(int(values[1]), int(values[2]))] )
+                VCFutilities.repeat_coordinates.update( [(values[0],f) for f in range(int(values[1]), int(values[2]))] )
         return True
+    
+
+    def _get_vcf_snp_to_ouput(self, gt_snp: List[Tuple[Genotype, SNP]]) -> List[Tuple[Genotype, SNP]]:
+        """
+        From a list of SNPs at the same position, select those that should be 
+        printed in VCF file. This is based on pritning ALT or species SNPs
+
+        :param snps: list of SNPs from which to make a choice
+        :type snps: List[SNP]
+
+        :return: List of SNPs (can be single SNP in list) which to print to VCF
+        :rtype: List[SNP] 
+        """
+        if len(gt_snp)==0:
+            raise ValueError("Empty list of SNPs provided, at least one SNP must be present")
+        elif len(gt_snp)==1:
+            return gt_snp
+        #Determine what alleles are present among the SNPs
+        present_alleles=set( [f[0].get_genotype_allele(f[1]) for f in gt_snp] )
+        reference_allele=set([f[1].ref_base for f in gt_snp] )
+        if len(reference_allele)!=1:
+            raise ValueError("More than one reference allele")
+        else:
+            reference_allele=reference_allele.pop()
+        
+        if len(present_alleles)==1 and reference_allele in present_alleles:
+            #the SNP is reference allele, so return empty list
+            #because VCF line should have an ALT allele in it
+            return []
+        
+        return [f for f in gt_snp if f[0].get_genotype_allele(f[1])!=reference_allele]
+
         
     def output_genotypes_vcf(self, genotypes: Genotypes, output_file: str) -> None:
         with open(output_file, "w") as vcf_output_file:
@@ -103,83 +136,96 @@ class VCFutilities():
             coordinates=sorted(set([coordinate for genotype in genotypes.genotypes for coordinate in genotype.defining_snp_coordinates]))
             for contig_id, position in coordinates:
                 snps_at_coordinates=[(genotype, snp) for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.position==position and snp.ref_contig_id==contig_id]
-                alt_alleles=[base for base in [snp[1].alt_base for snp in snps_at_coordinates] ][0]
+                alt_alleles: List[Tuple[Genotype, SNP]] = self._get_vcf_snp_to_ouput(snps_at_coordinates)
                 if len(alt_alleles)>1:
                     print(f'Excess alleles at pos: {str(position)} contig {contig_id}')
                     continue
-                alt_str=f'{alt_alleles}'
-                for genotype, snp in snps_at_coordinates:
-                    #check that snp is in multi genotype region
-                    if snp.passes_filters:
-                        if genotype.get_genotype_allele(snp)==snp.alt_base:
-                            suffix=["0:."]*len(gt_columns)
-                            for gt in genotype.subgenotypes:
-                                if gt in gt_columns: #if genotype X and X.1 are separate targets, X.1 needs to show all SNPs of X,
-                                    #but if only X is target, X.1 will not be an output column in VCF
-                                    suffix[gt_columns[gt]]="1:"+str(genotype.get_genotype_allele_depth(snp)) #0 is REF allele
-                            vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
-                        else:
-                            suffix=["1:."]*len(gt_columns) #set
-                            for gt in genotype.subgenotypes:
-                                if gt in gt_columns: #if genotype X and X.1 are separate targets, X.1 needs to show all SNPs of X,
-                                    #but if only X is target, X.1 will not be an output column in VCF
-                                    suffix[gt_columns[gt]]="0:"+str(genotype.get_genotype_allele_depth(snp)) #0 is REF allele
-                            vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
+                if len(alt_alleles)==0:
+                    print(f'SNP found, but no GT with alt allele present at pos: {str(position)} contig {contig_id}')
+                    continue
+                genotype, snp=alt_alleles[0]
+                alt_str=snp.alt_base
 
-                        vcf_output_file.write("\t".join([str(f) for f in [snp.ref_contig_id,
-                                                                            snp.position+1,
-                                                                            vcf_snp_id,
-                                                                            snp.ref_base,
-                                                                            alt_str,
-                                                                            ".",
-                                                                            "PASS",
-                                                                            ".",
-                                                                            "GT:DP",
-                                                                            ]+suffix ]   ) +"\n" )
+                if snp.passes_filters:
+                    if genotype.get_genotype_allele(snp)==snp.alt_base:
+                        suffix=["0:."]*len(gt_columns)
+                        for gt in genotype.subgenotypes:
+                            if gt in gt_columns: #if genotype X and X.1 are separate targets, X.1 needs to show all SNPs of X,
+                                #but if only X is target, X.1 will not be an output column in VCF
+                                suffix[gt_columns[gt]]="1:"+str(genotype.get_genotype_allele_depth(snp)) #0 is REF allele
+                        vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
+                    else:
+                        suffix=["1:."]*len(gt_columns) #set
+                        for gt in genotype.subgenotypes:
+                            if gt in gt_columns: #if genotype X and X.1 are separate targets, X.1 needs to show all SNPs of X,
+                                #but if only X is target, X.1 will not be an output column in VCF
+                                suffix[gt_columns[gt]]="0:"+str(genotype.get_genotype_allele_depth(snp)) #0 is REF allele
+                        vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
+
+                    vcf_output_file.write("\t".join([str(f) for f in [snp.ref_contig_id,
+                                                                        snp.position+1,
+                                                                        vcf_snp_id,
+                                                                        snp.ref_base,
+                                                                        alt_str,
+                                                                        ".",
+                                                                        "PASS",
+                                                                        ".",
+                                                                        "GT:DP",
+                                                                        ]+suffix ]   ) +"\n" )
 
 
     def output_species_vcf(self, genotypes: Genotypes, output_file: str) -> None:
         with open(output_file, "w") as vcf_output_file:
             #write the vcf header
-            gt_columns=self._write_vcf_header(genotypes, vcf_output_file, extra_columns=["NonTargetSerovar"])
+            gt_columns=self._write_vcf_header(genotypes, vcf_output_file, extra_columns=[])
 
             coordinates=sorted(set([coordinate for genotype in genotypes.genotypes for coordinate in genotype.defining_snp_coordinates]))
             for contig_id, position in coordinates:
-                snps_at_coordinates=[(genotype, snp) for genotype in genotypes.genotypes for snp in genotype.defining_snps if snp.position==position and snp.ref_contig_id==contig_id]
-                alt_alleles=[base for base in [snp[1].alt_base for snp in snps_at_coordinates] ][0]
+                snps_at_coordinates=[(genotype, snp) for genotype in genotypes.genotypes for 
+                                     snp in genotype.defining_snps if snp.position==position and snp.ref_contig_id==contig_id]
+                alt_alleles: List[Tuple[Genotype, SNP]] = self._get_vcf_snp_to_ouput(snps_at_coordinates)
                 if len(alt_alleles)>1:
                     print(f'Excess alleles at pos: {str(position)} contig {contig_id}')
                     continue
-                alt_str=f'{alt_alleles}'
-                for genotype, snp in snps_at_coordinates:
-                    #check that snp is in multi genotype region
+                if len(alt_alleles)==0:
+                    print(f'SNP found, but no GT with alt allele present at pos: {str(position)} contig {contig_id}')
+                    continue
+                genotype, snp=alt_alleles[0]
+                alt_str=snp.alt_base
 
-                    if snp.passes_filters:
-                        if genotype.name!="species":
-                            if genotype.get_genotype_allele(snp)==snp.alt_base:
-                                suffix=["1:."]*len(gt_columns)
-                                suffix[gt_columns[genotype.name]]="1:"+str(genotype.get_genotype_allele_depth(snp)) #0 is REF allele
-                            else:
-                                suffix=["1:."]*len(gt_columns) #set
-                                suffix[gt_columns[genotype.name]]="0:"+str(genotype.get_genotype_allele_depth(snp))
-                            vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
-                            suffix[gt_columns["species"]]=0
-                            suffix[gt_columns["NonTargetSerovar"]]=".:."
+                #for genotype, snp in snps_at_coordinates:
+                #check that snp is in multi genotype region
+
+                if snp.passes_filters:
+                    if genotype.name!=InputConfiguration.SPECIES_NAME:
+                        if genotype.get_genotype_allele(snp)==snp.alt_base:
+                            suffix=["0:."]*len(gt_columns)
+                            for subgenotype in genotype.subgenotypes:
+                                if subgenotype in gt_columns:
+                                    suffix[gt_columns[subgenotype]]="1:"+str(genotype.get_genotype_allele_depth(snp)) #0 is REF allele
                         else:
-                            vcf_snp_id="_".join( ["Serovar", snp.ref_contig_id ,str(snp.position+1), snp.alt_base] )
-                            suffix=["1:."]*len(gt_columns)
-                            suffix[gt_columns["NonTargetSerovar"]]="1:"+str(genotypes.genotypes[-1].get_genotype_allele_depth(snp))
-                            alt_str=snp.alt_base
-                        vcf_output_file.write("\t".join([str(f) for f in [snp.ref_contig_id,
-                                                                            snp.position+1,
-                                                                            vcf_snp_id,
-                                                                            snp.ref_base,
-                                                                            alt_str,
-                                                                            ".",
-                                                                            "PASS",
-                                                                            ".",
-                                                                            "GT:DP",
-                                                                            ]+suffix ]   ) +"\n" )
+                            suffix=["1:."]*len(gt_columns) #set
+                            for subgenotype in genotype.subgenotypes:
+                                if subgenotype in gt_columns:
+                                    suffix[gt_columns[subgenotype]]="0:"+str(genotype.get_genotype_allele_depth(snp))
+                        vcf_snp_id="_".join( ["GT",genotype.name,snp.ref_contig_id,str(snp.position+1)] )
+                        suffix[gt_columns[InputConfiguration.SPECIES_NAME]]=".:." #predominant SNV is other species is not assesed                        
+                        #suffix[gt_columns["NonTargetSerovar"]]=".:."
+                    else:
+                        vcf_snp_id="_".join( ["Serovar", snp.ref_contig_id ,str(snp.position+1), snp.alt_base] )
+                        suffix=["0:."]*len(gt_columns)
+                        suffix[gt_columns[InputConfiguration.SPECIES_NAME]]="1:"+str(genotypes.genotypes[-1].get_genotype_allele_depth(snp))
+                        #suffix[gt_columns["NonTargetSerovar"]]="1:"+str(genotypes.genotypes[-1].get_genotype_allele_depth(snp))
+                    vcf_output_file.write("\t".join([str(f) for f in [snp.ref_contig_id,
+                                                                        snp.position+1,
+                                                                        vcf_snp_id,
+                                                                        snp.ref_base,
+                                                                        alt_str,
+                                                                        ".",
+                                                                        "PASS",
+                                                                        ".",
+                                                                        "GT:DP",
+                                                                        ]+suffix ]   ) +"\n" )
 
     def _write_vcf_header(self, genotypes: Genotypes, file_handle: TextIOWrapper, **kwargs) -> Dict[str, int]:
         extra_columns=kwargs.get("extra_columns", [])
@@ -202,7 +248,4 @@ class VCFutilities():
         file_handle.write(header_line)
         return gt_columns
     
-    @property
-    def repeat_coordinates(self) -> Set[ Tuple[str, int] ]:
-        return self._repeat_coordinates
 

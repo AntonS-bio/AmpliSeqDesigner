@@ -1,6 +1,5 @@
 {
     "max_cpus": 8,
-    "root_dir":"~/",
     "name_stubs":[".someotherstub"],
 
     "input_files":{

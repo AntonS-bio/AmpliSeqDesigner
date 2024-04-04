@@ -148,7 +148,7 @@ class PrimersGenerator():
         primer_pairs=len(output["PRIMER_PAIR"])
         result: List[PrimerPair]=[]
         for i in range(0,primer_pairs):
-            primer_name=f'{self.target_gt}_{target.position}_{id_suffix}'
+            primer_name=id_suffix
             forward=Primer(seq=output[f'PRIMER_LEFT_{str(i)}_SEQUENCE'],
                         g_c=output[f'PRIMER_LEFT_{str(i)}_GC_PERCENT'],
                         t_m=output[f'PRIMER_LEFT_{str(i)}_TM'], is_reverse=False)
@@ -159,7 +159,7 @@ class PrimersGenerator():
             reverse.ref_start=template_start+int(output[f'PRIMER_RIGHT_{str(i)}'][0])-len(reverse.seq)+1
             if forward.ref_end > target.position or reverse.ref_start < target.position:
                 continue #pair doesn't include the target SNP
-            new_pair=PrimerPair(name=primer_name, forward=forward, reverse=reverse)
+            new_pair=PrimerPair(name_suffix=primer_name, forward=forward, reverse=reverse)
             new_pair.ref_contig=template_contig
             new_pair.penalty=output[f'PRIMER_PAIR_{str(i)}_PENALTY']
             amplicon_length=new_pair.reverse.ref_end-new_pair.forward.ref_start
@@ -167,18 +167,18 @@ class PrimersGenerator():
                     not self.forms_homodimers(reverse.seq) and \
                     self.count_heterodimers(forward.seq, reverse.seq)==0 and \
                     amplicon_length>self.config.min_amplicon_length and \
-                    amplicon_length<self.config.flank_len_to_check:
+                    amplicon_length<self.config.max_amplicon_len:
                 result.append(new_pair)
         return result
 
-    def _for_testing_load_gts(self, species_pkl, gts_pkl):
-        with open(species_pkl, "rb") as pickled_file:
-            species: Genotype = pickle.load(pickled_file)
+    # def _for_testing_load_gts(self, species_pkl, gts_pkl):
+    #     with open(species_pkl, "rb") as pickled_file:
+    #         species: Genotype = pickle.load(pickled_file)
 
-        with open(gts_pkl, "rb") as pickled_file:
-            self.genotypes: Genotypes = pickle.load(pickled_file)
+    #     with open(gts_pkl, "rb") as pickled_file:
+    #         self.genotypes: Genotypes = pickle.load(pickled_file)
 
-        self.genotypes.genotypes.append(species)
+    #     self.genotypes.genotypes.append(species)
 
     def _snps_within_interval(self, snps: List[SNP], ref_contig: int, interval_start:int, interval_end: int) -> List[SNP]:
         result=[snp for snp in snps if snp.ref_contig_id==ref_contig and snp.position > interval_start and snp.position < interval_end]
@@ -189,14 +189,15 @@ class PrimersGenerator():
             raise ValueError(f'Sequence {seq_id} not found in reference FASTA {self.config.reference_fasta}')
         return str(self.ref_seq[seq_id][start:end])
     
-    def _both_primers_given(self, left_snps: List[SNP], right_snps: List[SNP], target_snp:SNP) -> None:
+    def _both_primers_given(self, left_snps: List[SNP], right_snps: List[SNP], target_snp:SNP) -> List[PrimerPair]:
+        results : List[PrimerPair] = []
         for left_snp, right_snp in product(left_snps, right_snps):
             #case 1
             distance_between_snps=right_snp.position-left_snp.position
-            if distance_between_snps > self.config.flank_len_to_check or distance_between_snps < InputConfiguration.min_amplicon_length: #distance between SNPs is too long:
+            if distance_between_snps > self.config.max_amplicon_len or distance_between_snps < InputConfiguration.min_amplicon_length: #distance between SNPs is too long:
                 #check the left and right separately
-                self._left_primers_given(left_snps=[left_snp], target_snp=target_snp)
-                self._right_primers_given(right_snps=[right_snp], target_snp=target_snp)
+                results += self._left_primers_given(left_snps=[left_snp], target_snp=target_snp)
+                results += self._right_primers_given(right_snps=[right_snp], target_snp=target_snp)
                 continue
             template_contig=left_snp.ref_contig_id
             forward=self._get_ref_sequence( template_contig, left_snp.position-1, left_snp.position+20  )
@@ -209,32 +210,33 @@ class PrimersGenerator():
             #add "fixed" to name to show that this pair has both sides fixed
             global_args=self.add_global_primer_args(for_seq=forward,rev_seq=reverse, template=seq_args["SEQUENCE_TEMPLATE"])
             primers=primer3.bindings.design_primers(seq_args=seq_args, global_args=global_args)
-            self.new_primer_pairs += self.process_p3_output(primers, target_snp, '_both_fixed', template_start, template_contig)
+            results += self.process_p3_output(primers, target_snp, '_both_fixed', template_start, template_contig)
+        return results
 
-    def _right_primers_given(self, right_snps:List[SNP], target_snp: SNP) -> None:
+    def _right_primers_given(self, right_snps:List[SNP], target_snp: SNP) ->  List[PrimerPair]:
         for right_snp in right_snps:
             template_contig=right_snp.ref_contig_id
-            template_start=right_snp.position-self.config.flank_len_to_check
+            template_start=right_snp.position-self.config.max_amplicon_len
             reverse=self._get_ref_sequence( template_contig, right_snp.position-20, right_snp.position )
             reverse=str(Seq(reverse).reverse_complement())
             seq_args={"SEQUENCE_ID":f'{self.target_gt}_{str(target_snp.position)}',
                     "SEQUENCE_TEMPLATE": self._get_ref_sequence( template_contig, template_start , right_snp.position),
-                    "SEQUENCE_INCLUDED_REGION": [0, self.config.flank_len_to_check]}
+                    "SEQUENCE_INCLUDED_REGION": [0, self.config.max_amplicon_len]}
             global_args=self.add_global_primer_args(for_seq=None,rev_seq=reverse,  template=seq_args["SEQUENCE_TEMPLATE"])
             primers=primer3.bindings.design_primers(seq_args=seq_args, global_args=global_args)
-            self.new_primer_pairs += self.process_p3_output(primers, target_snp, '_right_fixed', template_start, template_contig)
+            return self.process_p3_output(primers, target_snp, '_right_fixed', template_start, template_contig)
 
-    def _left_primers_given(self, left_snps: List[SNP], target_snp: SNP) -> None:
+    def _left_primers_given(self, left_snps: List[SNP], target_snp: SNP) ->  List[PrimerPair]:
         for left_snp in left_snps:
             template_contig=left_snp.ref_contig_id
             template_start=left_snp.position-20
             forward=self._get_ref_sequence( template_contig, left_snp.position-1, left_snp.position+20  )
             seq_args={"SEQUENCE_ID":f'{self.target_gt}_{str(target_snp.position)}',
-                    "SEQUENCE_TEMPLATE":    self._get_ref_sequence(template_contig, template_start, left_snp.position+self.config.flank_len_to_check),
-                    "SEQUENCE_INCLUDED_REGION": [0, self.config.flank_len_to_check ]}
+                    "SEQUENCE_TEMPLATE":    self._get_ref_sequence(template_contig, template_start, template_start+self.config.max_amplicon_len),
+                    "SEQUENCE_INCLUDED_REGION": [0, self.config.max_amplicon_len ]}
             global_args=self.add_global_primer_args(for_seq=forward, rev_seq=None, template=seq_args["SEQUENCE_TEMPLATE"])
             primers=primer3.bindings.design_primers(seq_args=seq_args, global_args=global_args)
-            self.new_primer_pairs += self.process_p3_output(primers, target_snp, '_both_fixed', template_start, template_contig)
+            return self.process_p3_output(primers, target_snp, '_left_fixed', template_start, template_contig)
 
     def _remove_duplicate_primer_pairs(self, all_pairs:List[PrimerPair]) -> None:
             """Sometimes the same pair of F/R sequences is generated multiple times 
@@ -260,18 +262,10 @@ class PrimersGenerator():
         if self.config.repeats_bed_file=="":
             return None
         
-        vcf_utils=VCFutilities()
-        vcf_utils.load_repeat_regions(self.config.repeats_bed_file)
         invalid_pairs:List[PrimerPair]=[]
-        repeat_contigs_coords={}
-        for contig in set( [f[0] for f in vcf_utils.repeat_coordinates] ):
-            repeat_contigs_coords[contig]=[f[1] for f in vcf_utils.repeat_coordinates if f[0]==contig]
-
         for pair in all_pairs:
-            pair_range=set(range(pair.forward.ref_start, pair.reverse.ref_end))
-            if pair.ref_contig in repeat_contigs_coords:
-                overlap=pair_range.intersection(repeat_contigs_coords[pair.ref_contig])
-                if len(overlap)>0:
+            if ( pair.ref_contig, pair.primers[0].ref_start) in VCFutilities.repeat_coordinates or \
+                ( pair.ref_contig, pair.primers[1].ref_end) in VCFutilities.repeat_coordinates:
                     invalid_pairs.append(pair)
         for pair in invalid_pairs:
             all_pairs.remove(pair)
@@ -314,7 +308,7 @@ class PrimersGenerator():
         for i in range(0, len(existing_primers_hits)-1): #the last hit is a corner case for complete genoes (i.e. the other primer is at the start of sequence), but that's a lot of hassle for little gain
             if existing_primers_hits[i].sseqid!=existing_primers_hits[i+1].sseqid: #hits on different contigs
                 continue
-            if abs(existing_primers_hits[i].sstart-existing_primers_hits[i+1].sstart)>self.config.flank_len_to_check:#hits too far apart
+            if abs(existing_primers_hits[i].sstart-existing_primers_hits[i+1].sstart)>self.config.max_amplicon_len:#hits too far apart
                 continue
             if existing_primers_hits[i].is_flipped or not existing_primers_hits[i+1].is_flipped: #Primers are not in forward/reverse orientation
                 continue
@@ -332,52 +326,74 @@ class PrimersGenerator():
         for intefering_primer in interfering_new_primers_headers:
             self.new_primer_pairs.remove(self._new_primer_header_to_object(intefering_primer))
 
-    def _identify_additional_gts(self, primer_pairs: List[PrimerPair], additional_snps:List[SNP]) -> None:
+    def _add_extra_gts(self, primer_pairs: List[PrimerPair], all_gt_snps:List[SNP]) -> None:
         for pair in primer_pairs:
-            additional_snps=self._snps_within_interval(additional_snps, pair.ref_contig, pair.forward.ref_start, pair.reverse.ref_end)
+            additional_snps=self._snps_within_interval(all_gt_snps, pair.ref_contig, pair.forward.ref_start, pair.reverse.ref_end)
             if len(additional_snps)>0:
-                a=1
-                ###Expand here!!
+                for snp in additional_snps:
+                    for gt in [f.name for f in self.genotypes.genotypes_with_snp(snp)]:
+                        if gt!=InputConfiguration.SPECIES_NAME:
+                            pair.targets.add(gt)
 
-    def find_candidate_primers(self) -> List[PrimerPair]:
+    def find_candidate_primers(self, target_gts: List[str]) -> List[PrimerPair]:
+        """
+        Identifies a set of optimal primers using Primer3
+
+        :param target_gts: List of genotypes for which to design primers
+        :type is_reverse: List[str]
+
+        :return: list of primers
+        :rtype: List[PrimerPair]
+        """
 
         self.new_primer_pairs.clear()
-        self.target_gt="2.3.1"
+        #self.target_gt="2.3.1"
         # for every SNP in target_lineage, identify the nearby SNPs 
-        all_species_snps=[snp for genotype in self.genotypes.genotypes for snp in genotype.defining_snps if genotype.name=="species"]
+        all_species_snps=[snp for genotype in self.genotypes.genotypes for snp in genotype.defining_snps if genotype.name==InputConfiguration.SPECIES_NAME]
         all_species_snps=sorted(all_species_snps, key=lambda x: (x.ref_contig_id, x.position) )
         interval_len=self.config.flank_len_to_check
 
-        target_genotype=self.genotypes.get_genotype(self.target_gt)
-        with open(self.config.temp_blast_db+"snps.tsv","w") as output_file:
-            for snp in target_genotype.defining_snps:
-                output_file.write(snp.ref_contig_id+"\t"+str(snp.position)+"\t"+str(snp.position+1)+"\t"+'{0:.2f}'.format(snp.specificity)+"-"+str(snp.sensitivity)+"\n")
+        with open(self.config.output_dir+"snps.tsv","w") as output_file:
+            for genotype in target_gts:
+                if genotype=="2.4":
+                    a=1
+                print(genotype)
+                self.target_gt=genotype
+                target_genotype=self.genotypes.get_genotype(self.target_gt)
+                for snp in target_genotype.defining_snps:
+                    output_file.write(snp.ref_contig_id+"\t"+str(snp.position)+
+                                    "\t"+str(snp.position+1)+
+                                    "\t"+target_genotype.name+"_"+
+                                    '{0:.2f}'.format(snp.specificity)+
+                                    "-"+str(snp.sensitivity)+"\n")
 
 
 
-        for i, snp in enumerate(target_genotype.defining_snps):
-            species_gt_snps=self._snps_within_interval(all_species_snps, snp.ref_contig_id, snp.position-interval_len, snp.position+interval_len)
-            if len(species_gt_snps)>0 and len(species_gt_snps)<30: # the target SNP has at least one flanking species SNPs, but too many is indicative of problematic region
-                left_species_snps=[species_snp for species_snp in species_gt_snps if species_snp.position<snp.position]
-                right_species_snps=[species_snp for species_snp in species_gt_snps if species_snp.position>snp.position]
-            #four cases: 
-            # 1 - left and right serovar SNPs anchored primers
-            # 2 - left serovar anchored primer
-            # 3 - right serovar anchored primer
-            # 4 - neither side has serovar primer, ignore this kind of SNP
-                if len(left_species_snps)>0 and len(right_species_snps)>0:
-                    self._both_primers_given(left_snps=left_species_snps, right_snps=right_species_snps, target_snp=snp)
-                elif len(left_species_snps)>0:
-                    self._left_primers_given(left_snps=left_species_snps, target_snp=snp)
-                elif len(right_species_snps)>0:
-                    self._right_primers_given(right_snps=right_species_snps, target_snp=snp)
-        self._remove_duplicate_primer_pairs(self.new_primer_pairs)
-        self._remove_interfering_primers(self.new_primer_pairs)
-        self._remove_primers_in_repeat_regions(self.new_primer_pairs)
+                for i, snp in enumerate(target_genotype.defining_snps):
+                    species_gt_snps=self._snps_within_interval(all_species_snps, snp.ref_contig_id, snp.position-interval_len, snp.position+interval_len)
+                    if len(species_gt_snps)>0 and len(species_gt_snps)<30: # the target SNP has at least one flanking species SNPs, but too many is indicative of problematic region
+                        left_species_snps=[species_snp for species_snp in species_gt_snps if species_snp.position<snp.position]
+                        right_species_snps=[species_snp for species_snp in species_gt_snps if species_snp.position>snp.position]
+                    #four cases: 
+                    # 1 - left and right serovar SNPs anchored primers
+                    # 2 - left serovar anchored primer
+                    # 3 - right serovar anchored primer
+                    # 4 - neither side has serovar primer, ignore this kind of SNP
+                        if len(left_species_snps)>0 and len(right_species_snps)>0:
+                            snp_primer_pairs = self._both_primers_given(left_snps=left_species_snps, right_snps=right_species_snps, target_snp=snp)
+                        elif len(left_species_snps)>0:
+                            snp_primer_pairs = self._left_primers_given(left_snps=left_species_snps, target_snp=snp)
+                        elif len(right_species_snps)>0:
+                            snp_primer_pairs = self._right_primers_given(right_snps=right_species_snps, target_snp=snp)
+                        for pair in snp_primer_pairs:
+                            pair.targets.add(genotype)
+                        self.new_primer_pairs+=snp_primer_pairs
+            self._remove_duplicate_primer_pairs(self.new_primer_pairs)
+            self._remove_interfering_primers(self.new_primer_pairs)
+            self._remove_primers_in_repeat_regions(self.new_primer_pairs)
 
-        #Check if other genotypes are captured by selected primers
-        all_genotype_snps=[snp for genotype in self.genotypes.genotypes for snp in genotype.defining_snps if genotype.name!="species" and genotype.name!=self.target_gt]
-        all_genotype_snps=sorted(all_genotype_snps, key=lambda x: (x.ref_contig_id, x.position) )
-        self._identify_additional_gts(self.new_primer_pairs,all_genotype_snps)
-
+            #Check if other genotypes are captured by selected primers
+            all_genotype_snps=[snp for genotype in self.genotypes.genotypes for snp in genotype.defining_snps if genotype.name!=InputConfiguration.SPECIES_NAME and genotype.name!=self.target_gt]
+            all_genotype_snps=sorted(all_genotype_snps, key=lambda x: (x.ref_contig_id, x.position) )
+            self._add_extra_gts(self.new_primer_pairs,all_genotype_snps)
         return self.new_primer_pairs
