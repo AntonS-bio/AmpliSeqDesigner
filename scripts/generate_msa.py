@@ -10,6 +10,7 @@ import numpy.typing as npt
 from Bio.Seq import Seq
 from data_classes import Amplicon, BlastResult, InputConfiguration
 from tqdm import tqdm
+import pickle
 
 class MergedAmplicons:
     """
@@ -107,8 +108,6 @@ class MsaResult:
 
 
 class MsaGenerator:
-    #use_sub_dirs=False
-    #cpu_threads=8
 
     def __init__(self, temp_blast_db_dir: str) -> None:
         self.temp_blast_db_dir=temp_blast_db_dir
@@ -123,6 +122,7 @@ class MsaGenerator:
                         self.file_to_search.append(join(path, name))
         else:
             self.file_to_search = [dir_to_search+"/"+f for f in listdir(dir_to_search) if isfile(join(dir_to_search, f)) and (splitext(f)[-1]==".fasta" or splitext(f)[-1]==".fna")]
+        #self.file_to_search=self.file_to_search[0:500]
 
     def generate_msa(self, amplicons:List[Amplicon], genomes_dir:str) -> Dict[str, MsaResult]:
         """Takes list of Amplicons and directory of genomes
@@ -145,8 +145,8 @@ class MsaGenerator:
         merged_amplicons.merge_amplicons(amplicons)
         blast_results_raw=self._run_blast( merged_amplicons.destination_amplicons, self.file_to_search )
         blast_results=self._process_blast_results(blast_results_raw, merged_amplicons.destination_amplicons)
-        msa_dfs: List[MsaResult] = self._align_blast_results(blast_results, merged_amplicons.destination_amplicons)
-        return msa_dfs
+        msa_results: List[MsaResult] = self._align_blast_results(blast_results, merged_amplicons.destination_amplicons)
+        return msa_results
 
     def _align_blast_results(self, blast_results: Dict[str, List[BlastResult]], amplicons: List[Amplicon]) -> List[MsaResult]:
         if __name__ == 'generate_msa':
@@ -162,14 +162,7 @@ class MsaGenerator:
             msa_results = list(tqdm( pool.imap(func=self._align_results_helper, iterable=aligner_inputs), total=len(aligner_inputs) ))
             pool.close()
             return msa_results
-            # msa_dfs: Dict[str, pd.DataFrame]={}
-            # for amplicon_id, amplicon_blast_results in blast_results.items(): #this is a shortcut and a more robust solution is required in longer-term
-            #     for result in msa_results:
-            #         if amplicon_id in result:
-            #             msa_dfs[amplicon_id]=self._msa_to_dataframe(result)
-            #             break
 
-            # return msa_dfs
 
     def _run_blast(self, subject_sequences: List[Amplicon], query_files: List[str]) -> List[BlastResult] :
         """Runs blast against a single file at a time using Pool
@@ -197,19 +190,11 @@ class MsaGenerator:
         valid blast hits with correctly oriented sequence
         """
         valid_amplicon_hits: Dict[str, List[BlastResult] ]={}
-        amplicon_len_delta={}
-        amplicon_len={}
         for amplicon in target_amplicons:
-            amplicon_len[amplicon.id]=len(amplicon.seq)
-            amplicon_len_delta[amplicon.id]=int(len(amplicon.seq) * (InputConfiguration.max_blast_length_diff/100))
             valid_amplicon_hits[amplicon.id]=[]
 
         for result in blast_resuls:
-            #check lenght and identity
-            if result.q_hit_len >= (amplicon_len[result.sseqid] - amplicon_len_delta[result.sseqid]) and \
-                result.q_hit_len <= (amplicon_len[result.sseqid] + amplicon_len_delta[result.sseqid]) and \
-                result.pident >= InputConfiguration.min_blast_identity:
-                valid_amplicon_hits[result.sseqid].append(result)
+            valid_amplicon_hits[result.sseqid].append(result)
 
         del blast_resuls
         return valid_amplicon_hits
@@ -241,21 +226,16 @@ class MsaGenerator:
         # msa_results: Dict[str,str]={}
         ids=[]
         sequences=[]
+        current_sequence=""
         for line in outcome.stdout.decode().strip().split("\n"):
             if line[0]==">":
                 ids.append(line[1:])
-                sequences.append("")
+                if len(current_sequence)!=0:
+                    sequences.append(current_sequence)
+                    current_sequence=""
             else:
-                sequences[-1]=sequences[-1]+line
+                current_sequence = current_sequence + line
+        sequences.append(current_sequence)
 
         return MsaResult( amplicon_id, ids, sequences)
 
-    # def _msa_to_dataframe(self, msa_result: Dict[str, str]) -> np.ndarray:
-    #     indices=list(msa_result.keys())
-    #     columns=len(msa_result[indices[0]])
-    #     result=np.zeros( (len(indices), len(columns))  )
-    #     #msa_df=pd.DataFrame(index=indices, columns=['pos_'+str(f) for f in range(0,columns)], dtype=str)
-    #     for seq_id, sequence in msa_result.items():
-    #         result[]
-    #         msa_df.loc[seq_id]=list(str(sequence).upper())
-    #     return msa_df

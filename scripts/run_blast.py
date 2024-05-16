@@ -1,8 +1,9 @@
 import subprocess
 from os.path import exists, isfile
 from os import mkdir
-from data_classes import BlastResult
+from data_classes import BlastResult, InputConfiguration
 from typing import List
+
 
 class BlastRunner:
     def __init__(self, **kwargs) -> None:
@@ -10,8 +11,8 @@ class BlastRunner:
         :key word_size: word size to use in BLAST search, int
         :key e_value: e-value threashold for BLAST search, float
         """
-        self.word_size:int=kwargs.get("word_size",20)
-        self.e_value: float= kwargs.get("e_value",0.00001)
+        self.word_size:int=kwargs.get("word_size",InputConfiguration.blast_word_size)
+        self.e_value: float= kwargs.get("e_value",InputConfiguration.blast_evalue)
     
     def db_from_file(self, file_name:str, db_dir: str) -> bool:
         self.db_file_name = file_name

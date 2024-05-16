@@ -41,12 +41,14 @@ class ValidateFiles:
         :key min_col_number: minimum required number of column in bed file, default: 3, int
         """        
         if not exists(bed_file_name):
-            raise FileExistsError(f'File or directory {bed_file_name} does not exist')
+            warnings.warn(f'File or directory {bed_file_name} does not exist')
+            return False
         min_column_count=kwargs.get("min_col_number",3)
         with open(bed_file_name) as bed_file:
             for line_counter, line in enumerate(bed_file):
                 if line.find("\t")==-1:
-                    raise ValueError(f'No tab-delimited found in file {bed_file_name} on line {line_counter}:\n {line}')
+                    warnings.warn(f'No tab-delimited found in file {bed_file_name} on line {line_counter}:\n {line}')
+                    return False
                 line_values=line.strip().split("\t")
                 if len(line_values)<min_column_count:
                     raise ValueError(f'Min number of tab-delimited columns is {min_column_count}, but only {len(line_values)} were found on line {line_counter}:\n {line} ')
@@ -55,19 +57,23 @@ class ValidateFiles:
                 if int(line_values[2])<=int(line_values[1]):
                     raise ValueError(f'Value in column 2 must be greater than value in column 1. Check {bed_file_name} on line {line_counter}:\n {line}')
             if 'line_counter' not in vars():
-                raise ValueError(f'{bed_file_name} is empty')
+                warnings.warn(f'{bed_file_name} is empty')
+                return False
         self._validated_files.add(bed_file_name)
         return True
 
     def validate_fasta(self, fasta_file_name: str) -> True:
         if not exists(fasta_file_name):
-            raise FileExistsError(f'File or directory {fasta_file_name} does not exist')
+            warnings.warn(f'File or directory {fasta_file_name} does not exist')
+            return False
         with open(fasta_file_name) as fasta_file:
             first_fifty_char=fasta_file.readline()[0:50]
             if len(first_fifty_char)==0:
-                raise ValueError(f'Fasta file {fasta_file_name} is empty')
+                warnings.warn(f'Fasta file {fasta_file_name} is empty')
+                return False
             if first_fifty_char[0]!=">":
-                raise ValueError(f'Fasta file must have ">" on first line in {fasta_file_name}\n {first_fifty_char}')
+                warnings.warn(f'Fasta file must have ">" on first line in {fasta_file_name}\n {first_fifty_char}')
+                return False
         self._validated_files.add(fasta_file_name)
         return True
     
@@ -94,7 +100,8 @@ class ValidateFiles:
                 break
         if len(bed_contigs)!=0:
             missing_contigs="\n".join( list(bed_contigs)[0:min(len(bed_contigs),10)] )
-            raise ValueError(f'Some bed file {bed_file_name} contig IDs not found in fasta file \n Ex. {fasta_file_name} (first 10):\n {missing_contigs} ')
+            warnings.warn(f'Some bed file {bed_file_name} contig IDs not found in fasta file \n Ex. {fasta_file_name} (first 10):\n {missing_contigs} ')
+            return False
         return True
             
     def contigs_in_vcf(self, bed_file_name: str, vcf_file_name: str) -> bool:
@@ -124,35 +131,54 @@ class ValidateFiles:
             warnings.warn("\n"+f'None of the contigs in VCF file {vcf_file_name} are present in bedfile {bed_file_name}')
             return False
 
-    def validate_vcf(self, vcfs_dir: str) -> None:
+    def validate_negative_genomes(self, genomes_dir: str) ->bool:
+        if not exists(genomes_dir):
+            warnings.warn(f'Negative genomes directory {genomes_dir} does not exist. Please check spelling.')
+            return False
+        negative_genomes=[file for file in listdir(genomes_dir) if file.split(".")[-1]=="fna" or file.split(".")[-1]=="fasta"]
+        if len(negative_genomes)==0:
+            warnings.warn(f'Negative genomes directory {genomes_dir} has no files ending in .fna or .fasta')
+            return False
+        return True
+
+    def validate_vcf(self, vcfs_dir: str) -> bool:
+        if not exists(vcfs_dir):
+            warnings.warn(f'VCF directory {vcfs_dir} does not exist. Please check spelling.')
+            return False
         vcf_files=[file for file in listdir(vcfs_dir) if file.split(".")[-1]=="vcf"]
         if len(vcf_files)==0:
-            raise IOError(f'Directory {vcfs_dir} have no VCF files')
+            warnings.warn(f'Directory {vcfs_dir} have no VCF files')
+            return False
         vcf_file_name=vcfs_dir+vcf_files[0]
         if not exists(vcf_file_name):
-            raise FileExistsError(f'File or directory {vcf_file_name} does not exist')
+            warnings.warn(f'VCF file or directory {vcf_file_name} does not exist')
+            return False
         vcf_file= open(vcf_file_name)
         first_two_char=vcf_file.readline()[0:2]
         if first_two_char!="##":
             vcf_file.close()
-            raise ValueError(f'First line of VCF file {vcf_file_name} does not start with ##')
+            warnings.warn(f'First line of VCF file {vcf_file_name} does not start with ##')
+            return False
         for line in vcf_file:
             if len(line)>=6:
                 if line[0:2]=="##":
                     pass #waiting to find line with #CHROM in it
                 if line[0:6]=="#CHROM" and len(line.split("\t"))<=9:
                     vcf_file.close()
-                    raise ValueError(f'The header VCF line (#CHROM...) should have 9 or more lines, but has fewer in file {vcf_file_name}')
+                    warnings.warn(f'The header VCF line (#CHROM...) should have 9 or more lines, but has fewer in file {vcf_file_name}')
+                    return False
         self._validated_files.add(vcf_file_name)                    
-        return None
+        return True
 
     def validate_hierarchy(self, hierarchy_file_name: str, config_data: InputConfiguration) -> bool:
         if not exists(hierarchy_file_name):
-            raise FileExistsError(f'File or directory {hierarchy_file_name} does not exist')
+            warnings.warn(f'Hierarchy file {hierarchy_file_name} does not exist')
+            return False
         with open(hierarchy_file_name) as input_file:
             for line in input_file:
                 if line.strip()=="":
-                    raise ValueError(f'Genotype hierarchy file {hierarchy_file_name} has no lines or empty lines')
+                    warnings.warn(f'Genotype hierarchy file {hierarchy_file_name} has no lines or empty lines')
+                    return False
         self._validated_files.add(hierarchy_file_name)
 
         hierarchy_data=HierarchyUtilities().load_hierarchy(config_data.hierarchy_file)

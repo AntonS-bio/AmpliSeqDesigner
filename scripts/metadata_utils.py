@@ -3,6 +3,7 @@ from typing import List
 from collections import Counter
 import name_converters
 from data_classes import InputConfiguration
+from os.path import exists
 import warnings
 
 meta_data: pd.DataFrame = pd.DataFrame()
@@ -17,18 +18,26 @@ def load_metadata(config: InputConfiguration) -> bool:
     :type config: InputConfiguration
     """
     global meta_data, metadata_filename, genotype_column
+    metadata_filename=config.meta_data_file
+    genotype_column=config.genotype_column
+
+    if not exists(metadata_filename):
+        warnings.warn(f'Metadata file {metadata_filename} does not exist. Please check the spelling.')
+        return False
+
     meta_data=pd.read_csv(config.meta_data_file, sep=config.metadata_delim, index_col=0)
     if meta_data.size==0 or len(meta_data.columns)<1:
-        raise ValueError(f'Metadata file has single column. Perhaps delimiter {config.metadata_delim} is incorrect? Use \\t for tab.')
+        warnings.warn(f'Metadata file has single column. Perhaps delimiter {config.metadata_delim} is incorrect? Use \\t for tab.')
+        return False
     if config.genotype_column not in meta_data.columns:
-        raise ValueError(f'Could not find genotype column {config.genotype_column} in metadata file {config.meta_data_file}.')
-    else:
-        genotype_column=config.genotype_column
+        warnings.warn(f'Could not find genotype column {config.genotype_column} in metadata file {config.meta_data_file}. Did you specify correct delimiter?')
+        return False
     if Counter(meta_data.index.duplicated())[True]!=0:
         duplicate_indices=meta_data.index[meta_data.index.duplicated()]
         values_to_print="\n"+"\n".join(duplicate_indices)
-        raise ValueError(f'Metadata file {config.meta_data_file} has {len(duplicate_indices)} duplicated indices in column {duplicate_indices.name}: {values_to_print}')
-    metadata_filename=config.meta_data_file
+        warnings.warn(f'Metadata file {config.meta_data_file} has {len(duplicate_indices)} duplicated indices in column {duplicate_indices.name}: {values_to_print}')
+        return False
+    
     return True
     
 def get_metavalue(sample: str, value_column: str) -> str:

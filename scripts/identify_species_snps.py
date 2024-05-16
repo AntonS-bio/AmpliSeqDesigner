@@ -51,8 +51,6 @@ class IdentifySpeciesSnps:
                 current_amplicon=[f for f in genotype.amplicons if f.id==amplicon_id][0]
                 ampicon_msa_seq: str= msa.row_to_seq(msa.seq_ids.index(amplicon_id))
                 msa_to_amplicon_coord: Dict[int, int] =self._map_msa_to_ref_coordinates( msa_seq= list(ampicon_msa_seq) )
-
-        
                 if len(msa.seq_ids)==1:
                     current_amplicon.has_homologues=False
                 else:
@@ -84,7 +82,7 @@ class IdentifySpeciesSnps:
                                     snp.is_species_snp=True
                                     genotype.add_genotype_allele(snp, snp.alt_base, bases_at_position[alt_base])
         return genotype
-
+    
     def _map_msa_to_ref_coordinates(self, msa_seq:List[str])-> Dict[int, int]:
         """MSA produces a sequence string with gaps so position of nucleotide in the string
         does not correspond to the position of nucleotide in reference sequence. 
@@ -109,7 +107,6 @@ class IdentifySpeciesSnps:
         of flanking plus amplicon sequences may be longer than max_seq_len
         """        
         genotype: Genotype=Genotype(InputConfiguration.SPECIES_NAME)
-        i=0
         with open(f'{self.amplicons_bed}') as input_bed_file: #don't keep the file open, hence why load it to memory
             for line in input_bed_file:
                 if line.strip()=="":#catches the last line of bed file that can be just \n which user might not realise

@@ -1,7 +1,7 @@
 #from typing import Tuple, List, Dict
 import pickle
-from os.path import exists, expanduser
-from os import makedirs
+from os.path import exists, expanduser, join
+from os import makedirs, remove, listdir
 from shutil import which
 from sys import exit
 from data_classes import Genotype, Genotypes, InputConfiguration
@@ -12,8 +12,37 @@ import name_converters
 from snp_optimiser import SnpOptimiser
 from identify_species_snps import IdentifySpeciesSnps
 from primers_generator import PrimersGenerator
+import metadata_utils
 import argparse
 import warnings
+
+def _check_inputs(config_data):
+
+    ### START Input validation tests ####
+    print("Validating input files")
+    file_validator=ValidateFiles()
+    if not file_validator.validate_fasta(config_data.reference_fasta):
+        exit(1)
+    
+    if config_data.repeats_bed_file!="":
+        if not file_validator.validate_bed(config_data.repeats_bed_file):
+            exit(1)
+        if not file_validator.contigs_in_fasta(config_data.repeats_bed_file, config_data.reference_fasta):
+            exit(1)
+    
+    if not file_validator.validate_vcf(config_data.vcf_dir):
+        exit(1)
+    
+    if not file_validator.validate_hierarchy(config_data.hierarchy_file, config_data):
+        exit(1)
+    
+    if not file_validator.validate_negative_genomes(config_data.negative_genomes):
+        exit(1)
+        
+    if not metadata_utils.load_metadata(config_data):
+        exit(1)
+    print("Input validation complete. ")
+    #### END Input validation tests ####
 
 def main():
 
@@ -31,7 +60,9 @@ def main():
 
     run_mode=args.mode
     config_file=expanduser(args.config_file)
-
+    if not exists(config_file):
+        raise ValueError(f'File {config_file} not found, please check spelling.')
+    
     #Check dependencies
 
     if which("mafft") is None:
@@ -39,26 +70,22 @@ def main():
     if which("makeblastdb") is None or which("blastn") is None:
         raise OSError("Missing NCBI BLAST program. It's available via Conda.")
 
-    config_data = InputConfiguration( config_file )
+    try:
+        config_data = InputConfiguration( config_file )
+    except IOError as error:
+        print(error)
+        exit(1)
 
-    ### START Input validation tests ####
-    print("Validating input files")
-    file_validator=ValidateFiles()
-    file_validator.validate_fasta(config_data.reference_fasta)
-    if config_data.repeats_bed_file!="":
-        file_validator.validate_bed(config_data.repeats_bed_file)
-        file_validator.contigs_in_fasta(config_data.repeats_bed_file, config_data.reference_fasta)
-    file_validator.validate_vcf(config_data.vcf_dir)
-    file_validator.validate_hierarchy(config_data.hierarchy_file, config_data)
-    #### END Input validation tests ####
-
+    _check_inputs(config_data)
+    
     #create directory for output is does not exit
     if exists(config_data.msa_dir):
-        warnings.warn("MSA directory exists, it may be accumulating a lot of data. Consider deleting it, the script will make it again.")
+        warnings.warn("MSA directory exists, removing all .fasta and .fna")
+        [remove( join(config_data.msa_dir,f) ) for f in listdir(config_data.msa_dir) if f.split(".")[-1]=="fna" or f.split(".")[-1]=="fasta"]
     for value in [config_data.output_dir, config_data.msa_dir, config_data.temp_blast_db]:
         if not exists(value):
             makedirs(value)
-
+    
     #### START Identify genotype defining SNPs ####
     for stub in config_data.name_stubs:
         name_converters.name_stubs.add(stub)
@@ -115,7 +142,8 @@ def main():
 
 
     species_genotype: Genotype=snp_identifier.generate_flanking_amplicons()
-
+    with open(config_data.output_dir+"/species_gt.pkl", "wb") as output:
+        pickle.dump(species_genotype, output)
     flanking_amplicons=snp_identifier.get_bifurcating_snps(species_genotype)
 
     
@@ -146,7 +174,8 @@ def main():
     #generator._for_testing_load_gts(config_data.species_data, config_data.genotypes_data)
     generator.find_candidate_primers(target_gts)
     with open(config_data.output_dir+"primers.tsv","w") as output_file:
-        header="\t".join(["Name", "Penalty", "Contig", "Start","End","Length",
+        header="\t".join(["Name", "Forward Species SNPs", "Reverse Species SNPs",
+                        "Penalty", "Contig", "Start","End","Length",
                         "Forward","Forward Tm", "Forward GC",
                         "Reverse","Reverse Tm", "Reverse GC"])+"\n"
         output_file.write(header)

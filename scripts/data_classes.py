@@ -615,6 +615,7 @@ class Primer:
         self._g_c=g_c
         self._ref_start=-1
         self._is_reverse=is_reverse
+        self._species_snps=0
 
     @property
     def t_m(self) -> float:
@@ -623,6 +624,15 @@ class Primer:
     @t_m.setter
     def t_m(self, value: float):
         self._t_m = float(value)
+
+    @property
+    def species_snps(self) -> int:
+        return self._species_snps    
+
+    @species_snps.setter
+    def species_snps(self, value: int):
+        self._species_snps = int(value)
+
 
     @property
     def seq(self) -> str:
@@ -681,6 +691,10 @@ class PrimerPair:
         return self._reverse
 
     @property
+    def species_snps(self) -> int:
+        return self.forward.species_snps+self.reverse._species_snps
+
+    @property
     def ref_contig(self) -> str:
         return self._ref_contig
 
@@ -729,6 +743,8 @@ class PrimerPair:
     
     def to_string(self) -> str:
         return '\t'.join([str(f) for f in [self.name,
+                                    str(self.forward.species_snps),
+                                    str(self.reverse.species_snps),
                                     '{0:.2f}'.format(self.penalty),
                                     self.ref_contig,
                                     self.forward.ref_start,
@@ -807,8 +823,6 @@ class InputConfiguration:
     cpu_threads=1
     flank_len_to_check=-1 #this is intentional to avoid hiding this parameters,
     max_amplicon_len=-1
-    max_blast_length_diff=-1 #they must be defined in config file
-    min_blast_identity=-1
     use_negative_genomes_subdir=False
     output_dir=""
     sensitivity_limit: float=-1.0
@@ -823,22 +837,26 @@ class InputConfiguration:
                 InputConfiguration.flank_len_to_check=self._config_data["analysis_parameters"]["flank_len_to_check"]
                 InputConfiguration.max_matching_negative_genomes=self._config_data["analysis_parameters"]["max_matching_negative_genomes"]
                 InputConfiguration.max_amplicon_len=InputConfiguration.flank_len_to_check*2
-                InputConfiguration.max_blast_length_diff=self._config_data["analysis_parameters"]["max_blast_length_diff"]
-                InputConfiguration.min_blast_identity=self._config_data["analysis_parameters"]["min_blast_identity"]
                 InputConfiguration.use_negative_genomes_subdir=str.lower(self._config_data["input_directories"]["use_negative_genomes_subdir"])=="true"
                 InputConfiguration.output_dir=expanduser(self._config_data["output_files"]["output_dir"])
                 InputConfiguration.specificity_limit=self._config_data["analysis_parameters"]["snp_specificity"]/100
                 InputConfiguration.sensitivity_limit=self._config_data["analysis_parameters"]["snp_sensitivity"]/100
                 InputConfiguration.min_amplicon_length=self._config_data["analysis_parameters"]["min_amplicon_length"]
+                InputConfiguration.blast_evalue=self._config_data["analysis_parameters"]["blast_e_value"]
+                InputConfiguration.blast_word_size=self._config_data["analysis_parameters"]["blast_word_size"]
                 self._load_whole_reference()
         except IOError as error:
             if not exists(file_name):
+                print(error)
                 raise IOError(f'Config file {config_file} does not exist') from error
             else:
-                raise IOError(f'Error loading file {config_file}. It exits, but cannot be processed.') from error
+                print(error)
+                raise IOError(f'Error loading file {config_file}. It exits, but cannot be processed. See above line for details.') from error
             
     
     def _load_whole_reference(self):
+        if not exists(self.reference_fasta):
+            raise IOError(f'Fasta file {self.reference_fasta} does not exist')
         for record in SeqIO.parse(self.reference_fasta,"fasta"):
             ReferenceSequence.whole_reference[record.id]=str(record.seq)
 

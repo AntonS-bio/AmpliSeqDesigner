@@ -194,10 +194,12 @@ class PrimersGenerator():
         for left_snp, right_snp in product(left_snps, right_snps):
             #case 1
             distance_between_snps=right_snp.position-left_snp.position
+            #just because both primers can be fixed, doesn't mean it's an optimal pairing.
+            #Check left and right primers separately as well.
+            results += self._left_primers_given(left_snps=[left_snp], target_snp=target_snp)
+            results += self._right_primers_given(right_snps=[right_snp], target_snp=target_snp)
+            #check the fixed primer pair
             if distance_between_snps > self.config.max_amplicon_len or distance_between_snps < InputConfiguration.min_amplicon_length: #distance between SNPs is too long:
-                #check the left and right separately
-                results += self._left_primers_given(left_snps=[left_snp], target_snp=target_snp)
-                results += self._right_primers_given(right_snps=[right_snp], target_snp=target_snp)
                 continue
             template_contig=left_snp.ref_contig_id
             forward=self._get_ref_sequence( template_contig, left_snp.position-1, left_snp.position+20  )
@@ -347,7 +349,6 @@ class PrimersGenerator():
         """
 
         self.new_primer_pairs.clear()
-        #self.target_gt="2.3.1"
         # for every SNP in target_lineage, identify the nearby SNPs 
         all_species_snps=[snp for genotype in self.genotypes.genotypes for snp in genotype.defining_snps if genotype.name==InputConfiguration.SPECIES_NAME]
         all_species_snps=sorted(all_species_snps, key=lambda x: (x.ref_contig_id, x.position) )
@@ -355,8 +356,6 @@ class PrimersGenerator():
 
         with open(self.config.output_dir+"snps.tsv","w") as output_file:
             for genotype in target_gts:
-                if genotype=="2.4":
-                    a=1
                 print(genotype)
                 self.target_gt=genotype
                 target_genotype=self.genotypes.get_genotype(self.target_gt)
@@ -371,23 +370,28 @@ class PrimersGenerator():
 
                 for i, snp in enumerate(target_genotype.defining_snps):
                     species_gt_snps=self._snps_within_interval(all_species_snps, snp.ref_contig_id, snp.position-interval_len, snp.position+interval_len)
-                    if len(species_gt_snps)>0 and len(species_gt_snps)<30: # the target SNP has at least one flanking species SNPs, but too many is indicative of problematic region
-                        left_species_snps=[species_snp for species_snp in species_gt_snps if species_snp.position<snp.position]
-                        right_species_snps=[species_snp for species_snp in species_gt_snps if species_snp.position>snp.position]
+                    if len(species_gt_snps)==0:
+                        continue
+                    #if len(species_gt_snps)>0 and len(species_gt_snps)<30: # the target SNP has at least one flanking species SNPs, but too many is indicative of problematic region
+                    left_species_snps=[species_snp for species_snp in species_gt_snps if species_snp.position<snp.position]
+                    right_species_snps=[species_snp for species_snp in species_gt_snps if species_snp.position>snp.position]
                     #four cases: 
                     # 1 - left and right serovar SNPs anchored primers
                     # 2 - left serovar anchored primer
                     # 3 - right serovar anchored primer
                     # 4 - neither side has serovar primer, ignore this kind of SNP
-                        if len(left_species_snps)>0 and len(right_species_snps)>0:
-                            snp_primer_pairs = self._both_primers_given(left_snps=left_species_snps, right_snps=right_species_snps, target_snp=snp)
-                        elif len(left_species_snps)>0:
-                            snp_primer_pairs = self._left_primers_given(left_snps=left_species_snps, target_snp=snp)
-                        elif len(right_species_snps)>0:
-                            snp_primer_pairs = self._right_primers_given(right_snps=right_species_snps, target_snp=snp)
-                        for pair in snp_primer_pairs:
-                            pair.targets.add(genotype)
-                        self.new_primer_pairs+=snp_primer_pairs
+                    if len(left_species_snps)>0 and len(right_species_snps)>0:
+                        snp_primer_pairs = self._both_primers_given(left_snps=left_species_snps, right_snps=right_species_snps, target_snp=snp)
+                    elif len(left_species_snps)>0:
+                        snp_primer_pairs = self._left_primers_given(left_snps=left_species_snps, target_snp=snp)
+                    elif len(right_species_snps)>0:
+                        snp_primer_pairs = self._right_primers_given(right_snps=right_species_snps, target_snp=snp)
+                    for pair in snp_primer_pairs:
+                        pair.targets.add(genotype)
+                        #Check how many SNP conincide with the generated primers
+                        pair.forward.species_snps=len(self._snps_within_interval(all_species_snps, snp.ref_contig_id, pair.forward.ref_start, pair.forward.ref_end))
+                        pair.reverse.species_snps=len(self._snps_within_interval(all_species_snps, snp.ref_contig_id, pair.forward.ref_start, pair.forward.ref_end))
+                    self.new_primer_pairs+=snp_primer_pairs
             self._remove_duplicate_primer_pairs(self.new_primer_pairs)
             self._remove_interfering_primers(self.new_primer_pairs)
             self._remove_primers_in_repeat_regions(self.new_primer_pairs)
