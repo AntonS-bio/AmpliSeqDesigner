@@ -16,7 +16,7 @@ import metadata_utils
 import argparse
 import warnings
 
-def _check_inputs(config_data):
+def _check_inputs(config_data: InputConfiguration):
 
     ### START Input validation tests ####
     print("Validating input files")
@@ -44,8 +44,7 @@ def _check_inputs(config_data):
     print("Input validation complete. ")
     #### END Input validation tests ####
 
-def main():
-
+def _parse_arguments():
     parser = argparse.ArgumentParser(description='Generate list of SNPs that uniquely identify one or more genotypes')
     parser.add_argument('-c','--config_file', metavar='', type=str,
                         help='Config file, see sample.json for example.', required=True)
@@ -57,30 +56,19 @@ def main():
     except:
         parser.print_help()
         exit(0)
+    return args
 
-    run_mode=args.mode
-    config_file=expanduser(args.config_file)
-    if not exists(config_file):
-        raise ValueError(f'File {config_file} not found, please check spelling.')
-    
-    #Check dependencies
+def _check_tools() -> bool:
+    for command, name in zip(["mafft", "makeblastdb", "blastn", "minimap2"], ["MAFFT", "NCBI BLAST", "NCBI BLAST", "minimap2"]):
+        if which(command) is None:
+            print(f'Missing {name} program. It is available via Conda.')
+            exit(0)
+    return True
 
-    if which("mafft") is None:
-        raise OSError("Missing MAFFT program. It's available via Conda.")
-    if which("makeblastdb") is None or which("blastn") is None:
-        raise OSError("Missing NCBI BLAST program. It's available via Conda.")
-
-    try:
-        config_data = InputConfiguration( config_file )
-    except IOError as error:
-        print(error)
-        exit(1)
-
-    _check_inputs(config_data)
-    
+def _setup_analysis(config_data: InputConfiguration):
     #create directory for output is does not exit
     if exists(config_data.msa_dir):
-        warnings.warn("MSA directory exists, removing all .fasta and .fna")
+        warnings.warn("MSA directory exists, removing all .fasta and .fna to save memory")
         [remove( join(config_data.msa_dir,f) ) for f in listdir(config_data.msa_dir) if f.split(".")[-1]=="fna" or f.split(".")[-1]=="fasta"]
     for value in [config_data.output_dir, config_data.msa_dir, config_data.temp_blast_db]:
         if not exists(value):
@@ -89,6 +77,8 @@ def main():
     #### START Identify genotype defining SNPs ####
     for stub in config_data.name_stubs:
         name_converters.name_stubs.add(stub)
+
+def _identify_genotype_SNPs(config_data: InputConfiguration):
 
     snp_identifier=GenotypeSnpIdentifier(config_data)
 
@@ -102,20 +92,17 @@ def main():
                 if snp.passes_filters:
                     fourth_col=f'SNP:{snp.ref_base}/{snp.alt_base}/GT:{genotype.name}/SP:{snp.specificity:.2f}/SE:{snp.sensitivity:.2f}'
                     snps_file.write("\t".join( [str(f) for f in [snp.ref_contig_id, snp.position, snp.position+1, fourth_col] ])+"\n")
+    return genotypes
 
-    with open(config_data.genotypes_data, "wb") as output:
-        pickle.dump(genotypes, output)
-
-
-    with open(config_data.genotypes_data, "rb") as pickled_file:
-        gt_snps: Genotypes = pickle.load(pickled_file)
-
+def _optimise_snps(config_data: InputConfiguration, genotypes: Genotypes):
     snp_opimiser=SnpOptimiser()
     max_iterval_len=config_data.max_amplicon_len
-    amplicon_intervals=snp_opimiser.optimise(max_iterval_len,gt_snps, rare_gts=config_data.gts_with_few_snps)
+    gts_with_few_snps=config_data.gts_with_few_snps+ [f for f in genotypes.genotypes if len(f.defining_snps)<=10]
+    amplicon_intervals=snp_opimiser.optimise(max_iterval_len,genotypes, rare_gts=gts_with_few_snps)
     if len(amplicon_intervals)==0:
         print("No intervals with multiple genotypes were identified and none of the genotypes are listed are rare. Add genotypes to 'gts_with_few_snps' in config. Exiting.")
         exit()
+    
     with open(config_data.multi_gt_intervals, "w") as output_bed:
         for interval in amplicon_intervals:
             interval_start=min([f.position for f in interval["snps"]])
@@ -124,6 +111,41 @@ def main():
             gts="_".join(interval["genotypes"])
             output_bed.write('\t'.join([contig_id, str(interval_start),str(interval_end),gts])+"\n")
 
+
+def main():
+
+    _check_tools()
+    args=_parse_arguments()
+    
+    run_mode=args.mode
+    config_file=expanduser(args.config_file)
+    if not exists(config_file):
+        print(f'File {config_file} not found, please check spelling.')
+        exit(0)
+
+    try:
+        config_data = InputConfiguration( config_file )
+    except IOError as error:
+        print(error)
+        exit(1)
+
+    _check_inputs(config_data)
+    
+    _setup_analysis(config_data)
+
+    #genotypes: Genotypes = _identify_genotype_SNPs(config_data)    
+
+    ### DEBUG command
+    # with open(config_data.genotypes_data, "wb") as output:
+    #     pickle.dump(genotypes, output)
+    ### DEBUG command
+
+    ### DEBUG command
+    with open(config_data.genotypes_data, "rb") as pickled_file:
+        genotypes: Genotypes = pickle.load(pickled_file)
+    ### DEBUG command
+
+    _optimise_snps()
     # # ### END optimise the selection of SNPs ####
 
     # # #### START MSA generation section ####
@@ -133,6 +155,7 @@ def main():
     if run_mode!="Amplicon":
         exit(0)
 
+    exit()
 
     snp_identifier=IdentifySpeciesSnps(ref_fasta=config_data.reference_fasta,
                                     msa_dir=config_data.msa_dir,

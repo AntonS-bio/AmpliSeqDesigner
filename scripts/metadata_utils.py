@@ -3,12 +3,13 @@ from typing import List
 from collections import Counter
 import name_converters
 from data_classes import InputConfiguration
-from os.path import exists
+from os.path import exists, join
 import warnings
 
 meta_data: pd.DataFrame = pd.DataFrame()
 metadata_filename: str = ""
 genotype_column: str=""
+output_dir: str=""
 warnings.formatwarning = lambda msg, *args, **kwargs: f'{msg}\n'
 
 
@@ -17,9 +18,10 @@ def load_metadata(config: InputConfiguration) -> bool:
     :param config: config object with address of the metadata file
     :type config: InputConfiguration
     """
-    global meta_data, metadata_filename, genotype_column
+    global meta_data, output_dir, metadata_filename, genotype_column
     metadata_filename=config.meta_data_file
     genotype_column=config.genotype_column
+    output_dir = config.output_dir
 
     if not exists(metadata_filename):
         warnings.warn(f'Metadata file {metadata_filename} does not exist. Please check the spelling.')
@@ -64,12 +66,15 @@ def samples_in_metadata(samples: List[str]) -> List[str]:
     :return: List of names that were not found in metadata
     :rtype: List[str]
     """   
-    global meta_data
+    global meta_data, output_dir
     samples_without_metadata:List[str]=[]
     for sample in samples:
         if not name_converters.add_value(sample, set(meta_data.index)):
             samples_without_metadata.append(sample)
     if len(samples_without_metadata)!=0:
-        missing_to_print="\n"+"\n".join( samples_without_metadata[ 0: min(5,len(samples_without_metadata)) ] )
-        warnings.warn(f'Warning! {len(samples_without_metadata)} samples are missing in metadata. Few examples are: {missing_to_print}\nThese samples will be excluded.')
+        with open(join(output_dir,"samples_wo_metadata.txt"), "w") as output:
+            for sample in samples_without_metadata:
+                output.write(sample+"\n")
+        #missing_to_print="\n"+"\n".join( samples_without_metadata[ 0: min(5,len(samples_without_metadata)) ] )
+        warnings.warn(f'Warning! {len(samples_without_metadata)} samples are missing in metadata. Full list in {output_dir}/samples_wo_metadata.txt')
     return samples_without_metadata
