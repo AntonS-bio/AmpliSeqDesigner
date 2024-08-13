@@ -838,7 +838,7 @@ class InputConfiguration:
                 InputConfiguration.max_matching_negative_genomes=self._config_data["analysis_parameters"]["max_matching_negative_genomes"]
                 InputConfiguration.max_amplicon_len=InputConfiguration.flank_len_to_check*2
                 InputConfiguration.use_negative_genomes_subdir=str.lower(self._config_data["input_directories"]["use_negative_genomes_subdir"])=="true"
-                InputConfiguration.output_dir=expanduser(self._config_data["output_files"]["output_dir"])
+                InputConfiguration.output_dir=expanduser(self._config_data["output_files"]["output_dir"])+"/"
                 InputConfiguration.specificity_limit=self._config_data["analysis_parameters"]["snp_specificity"]/100
                 InputConfiguration.sensitivity_limit=self._config_data["analysis_parameters"]["snp_sensitivity"]/100
                 InputConfiguration.min_amplicon_length=self._config_data["analysis_parameters"]["min_amplicon_length"]
@@ -873,9 +873,13 @@ class InputConfiguration:
         return expanduser(self._config_data["input_files"]["reference_fasta"])
     
     @property
+    def existing_primers(self) -> str:
+        return expanduser(self._config_data["input_files"]["existing_primers"])
+
+    @property
     def repeats_bed_file(self) -> str:
         return expanduser(self._config_data["input_files"]["repeats_bed_file"])
-    
+
     @property
     def hierarchy_file(self) -> str:
         return expanduser(self._config_data["input_files"]["hierarchy_file"])

@@ -24,9 +24,18 @@ class PrimersGenerator():
             raise IOError(f'Reference FASTA {config.reference_fasta} does not exist')
         for record in SeqIO.parse(config.reference_fasta, "fasta"):
             self.ref_seq[record.id]=str(record.seq)
-        self.existing_primers: List[Primer]=[]
+        self.existing_primers: List[Primer]=self._load_existing_primers()
         self.new_primer_pairs: List[PrimerPair]=[]
 
+    def _load_existing_primers(self) -> List[Primer]:
+        result: List[Primer] = []
+        with open(self.config.existing_primers, "r") as file:
+            for line in file:
+                values = line.strip().split("\t")
+                if len(values)==2:
+                    result.append(self._sequence_to_primer(values[0], False) )
+                    result.append(self._sequence_to_primer(values[1], True) )
+        return result
 
     def _get_seq_coordinates_in_ref(self, sequence) -> int:
         seq=Seq(sequence)
@@ -62,36 +71,36 @@ class PrimersGenerator():
         else:
             return (False, "")
         
-    def load_existing_primer_from_fasta(self, existing_primers_fasta: str):
-        self.existing_primers.clear()
-        for record in SeqIO.parse(existing_primers_fasta, "fasta"):
-            direction_info=self._id_has_direction_info(record.id)
-            if direction_info[0]:
-                primer=self._sequence_to_primer( str(record.seq), is_reverse=direction_info[1]=="reverse" )
-            else: #this is worst case, add primer as both forward and reverse
-                primer=self._sequence_to_primer( str(record.seq), is_reverse=True )
-                self.existing_primers.append(primer)
-                primer=self._sequence_to_primer( str(record.seq), is_reverse=False)
-            self.existing_primers.append(primer)
+    # def load_existing_primer_from_fasta(self, existing_primers_fasta: str):
+    #     self.existing_primers.clear()
+    #     for record in SeqIO.parse(existing_primers_fasta, "fasta"):
+    #         direction_info=self._id_has_direction_info(record.id)
+    #         if direction_info[0]:
+    #             primer=self._sequence_to_primer( str(record.seq), is_reverse=direction_info[1]=="reverse" )
+    #         else: #this is worst case, add primer as both forward and reverse
+    #             primer=self._sequence_to_primer( str(record.seq), is_reverse=True )
+    #             self.existing_primers.append(primer)
+    #             primer=self._sequence_to_primer( str(record.seq), is_reverse=False)
+    #         self.existing_primers.append(primer)
 
-    def load_existing_primer_from_bed(self, existing_primers_bed: str):
-        self.existing_primers.clear()        
-        if existing_primers_bed!="":
-            file_validator=ValidateFiles()
-            file_validator.validate_bed(existing_primers_bed, min_col_number=6)
-            with open(existing_primers_bed) as bed_file:
-                for i, line in enumerate(bed_file):
-                    values=line.strip().split("\t")
-                    if values[0] not in self.ref_seq:
-                        raise ValueError(f'Contig {values[0]} from existing amplicons file {existing_primers_bed} not found in reference fasta {self.config.reference_fasta}')
-                    if int(values[1])+1>len(self.ref_seq[values[0]]):
-                        raise ValueError(f'Amplicon {i+1} in existing amplicons file {existing_primers_bed} has coordinate {values[0]} {int(values[1])} greater than lenght of reference sequence: {self.config.reference_fasta}')
-                    primer_seq=self.ref_seq[values[0]][int(values[1]):int(values[2])+1] # +1 because python excludes the last item of slice
-                    is_reverse = values[5]=="-"
-                    if is_reverse:
-                        primer_seq=str(Seq(primer_seq).reverse_complement())
-                    primer=self._sequence_to_primer( primer_seq, is_reverse )
-                    self.existing_primers.append(primer)
+    # def load_existing_primer_from_bed(self, existing_primers_bed: str):
+    #     self.existing_primers.clear()        
+    #     if existing_primers_bed!="":
+    #         file_validator=ValidateFiles()
+    #         file_validator.validate_bed(existing_primers_bed, min_col_number=6)
+    #         with open(existing_primers_bed) as bed_file:
+    #             for i, line in enumerate(bed_file):
+    #                 values=line.strip().split("\t")
+    #                 if values[0] not in self.ref_seq:
+    #                     raise ValueError(f'Contig {values[0]} from existing amplicons file {existing_primers_bed} not found in reference fasta {self.config.reference_fasta}')
+    #                 if int(values[1])+1>len(self.ref_seq[values[0]]):
+    #                     raise ValueError(f'Amplicon {i+1} in existing amplicons file {existing_primers_bed} has coordinate {values[0]} {int(values[1])} greater than lenght of reference sequence: {self.config.reference_fasta}')
+    #                 primer_seq=self.ref_seq[values[0]][int(values[1]):int(values[2])+1] # +1 because python excludes the last item of slice
+    #                 is_reverse = values[5]=="-"
+    #                 if is_reverse:
+    #                     primer_seq=str(Seq(primer_seq).reverse_complement())
+    #                 primer=self._sequence_to_primer( primer_seq, is_reverse )
+    #                 self.existing_primers.append(primer)
 
     def add_global_primer_args(self, for_seq: str, rev_seq:str, template: str):
         global_args={

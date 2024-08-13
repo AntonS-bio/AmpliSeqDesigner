@@ -130,10 +130,10 @@ def main():
         exit(1)
 
     _check_inputs(config_data)
-    
+
     _setup_analysis(config_data)
 
-    #genotypes: Genotypes = _identify_genotype_SNPs(config_data)    
+    genotypes: Genotypes = _identify_genotype_SNPs(config_data)
 
     ### DEBUG command
     # with open(config_data.genotypes_data, "wb") as output:
@@ -141,11 +141,11 @@ def main():
     ### DEBUG command
 
     ### DEBUG command
-    with open(config_data.genotypes_data, "rb") as pickled_file:
-        genotypes: Genotypes = pickle.load(pickled_file)
+    # with open(config_data.genotypes_data, "rb") as pickled_file:
+    #     genotypes: Genotypes = pickle.load(pickled_file)
     ### DEBUG command
 
-    _optimise_snps()
+    _optimise_snps(config_data, genotypes)
     # # ### END optimise the selection of SNPs ####
 
     # # #### START MSA generation section ####
@@ -155,8 +155,6 @@ def main():
     if run_mode!="Amplicon":
         exit(0)
 
-    exit()
-
     snp_identifier=IdentifySpeciesSnps(ref_fasta=config_data.reference_fasta,
                                     msa_dir=config_data.msa_dir,
                                     negative_genomes_dir=config_data.negative_genomes,
@@ -165,26 +163,32 @@ def main():
 
 
     species_genotype: Genotype=snp_identifier.generate_flanking_amplicons()
-    with open(config_data.output_dir+"/species_gt.pkl", "wb") as output:
-        pickle.dump(species_genotype, output)
+
+    # ### DEBUG command
+    # with open(config_data.output_dir+"/species_gt.pkl", "wb") as output:
+    #     pickle.dump(species_genotype, output)
+    # ### DEBUG command
     flanking_amplicons=snp_identifier.get_bifurcating_snps(species_genotype)
 
-    
-    
-    with open(config_data.species_data, "wb") as output:
-        pickle.dump(flanking_amplicons, output)
+   
+    # ### DEBUG command
+    # with open(config_data.species_data, "wb") as output:
+    #     pickle.dump(flanking_amplicons, output)
+    # ### DEBUG command
 
 
     # #### END MSA generation section ####
 
-    with open(config_data.species_data, "rb") as pickled_file:
-        species: Genotype = pickle.load(pickled_file)
+    ### DEBUG command
+    # with open(config_data.species_data, "rb") as pickled_file:
+    #     species: Genotype = pickle.load(pickled_file)
+    # with open(config_data.genotypes_data, "rb") as pickled_file:
+    #     genotypes: Genotypes = pickle.load(pickled_file)
 
-    with open(config_data.genotypes_data, "rb") as pickled_file:
-        genotypes: Genotypes = pickle.load(pickled_file)
+    ### DEBUG command
 
     target_gts= [genotype.name for genotype in genotypes.genotypes]
-    genotypes.genotypes.append(species)
+    genotypes.genotypes.append(flanking_amplicons)
 
     genotypes.get_duplicate_snps()
 
@@ -196,6 +200,7 @@ def main():
     generator.genotypes = genotypes
     #generator._for_testing_load_gts(config_data.species_data, config_data.genotypes_data)
     generator.find_candidate_primers(target_gts)
+
     with open(config_data.output_dir+"primers.tsv","w") as output_file:
         header="\t".join(["Name", "Forward Species SNPs", "Reverse Species SNPs",
                         "Penalty", "Contig", "Start","End","Length",
@@ -204,7 +209,7 @@ def main():
         output_file.write(header)
         for pair in generator.new_primer_pairs:
             output_file.write(pair.to_string()+"\n")
-
+    exit()
 
 main()
 
