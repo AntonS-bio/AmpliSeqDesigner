@@ -1,0 +1,56 @@
+{
+    "name_stubs":[".sorted",".filtered"],
+    "max_cpus": 8,    
+
+    "input_files":{
+    "reference_fasta": "~/paratyphi/inputs/FM200053.1.fasta",
+    "repeats_bed_file": "~/paratyphi/inputs/Paratyphi_A_repeats.bed",
+    "hierarchy_file": "~/paratyphi/inputs/2.4.9_hierarchy.tsv",
+    "meta_data_file": "~/paratyphi/inputs/metadata.csv",
+    "existing_primers": "~/paratyphi/inputs/existing_primer.txt"
+    },
+    
+    "input_directories":{
+    "vcf_dir": "~/paratyphi/VCFs/",
+    "negative_genomes": "~/paratyphi/negative_genomes/",
+    "use_negative_genomes_subdir": "False",    
+    "temp_blast_db": "~/paratyphi/tempBlastDB/"
+    },
+    
+    "metadata_parameters":{
+    "delimiter":",",
+    "genotype_column":"Genotype"
+    },
+    
+    "analysis_parameters":{
+    "snp_specificity":98,
+    "snp_sensitivity":98,
+    "gts_with_few_snps": [ "2.4.9" ],
+    "flank_len_to_check":1000, 
+    "min_amplicon_length": 200,
+    "blast_e_value": 0.05,
+    "blast_word_size": 28,
+    "max_matching_negative_genomes": 3
+    },
+    
+    "output_files":{
+    "output_dir":"~/AmpliSeqDesigner/test_data/outputs",
+    "genotype_snps":"genotype_snps.tsv",
+    "snps_bed":"genotype_snps.bed",
+    "genotypes_data":"gt_snps.pkl",
+    "species_data": "species_amplicons.pkl",
+    "multi_gt_intervals":"multi_gt_intervals.bed",
+    "msa_dir":"/msa/",
+    "genoptype_snps_vcf":"gt_snps.vcf",
+    "gt_and_species_snps_vcf":"gt_and_species_snps.vcf"
+    },
+
+    "primers_parameters": {
+        "PRIMER_OPT_SIZE": 20,
+        "PRIMER_OPT_TM": 60.0,
+        "PRIMER_MIN_TM": 55.0,
+        "PRIMER_MAX_TM": 65.0
+    }
+    }
+    
+    
